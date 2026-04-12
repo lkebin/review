@@ -83,8 +83,7 @@ func (m Model) View() string {
 
 	// Overlay help if shown
 	if m.showHelp {
-		helpView := m.renderHelp()
-		return m.overlayCenter(mainView, helpView)
+		return m.renderHelpOverlay()
 	}
 
 	return mainView
@@ -240,7 +239,7 @@ func (m Model) renderHelp() string {
 		{"j/k or ↑/↓", "Navigate files (list) / Scroll (diff)"},
 		{"Enter", "View diff for selected file"},
 		{"Ctrl+W", "Switch focus between panels"},
-		{"Ctrl+_ / Ctrl+=", "Resize focused panel (shrink/grow)"},
+		{"h / H", "Shrink/Grow file list width"},
 		{"L (shift+l)", "Toggle horizontal/vertical layout"},
 		{"g / G", "Go to top/bottom of diff"},
 		{"Ctrl+D / Ctrl+U", "Half page down/up"},
@@ -259,6 +258,39 @@ func (m Model) renderHelp() string {
 	helpText += "\n\n" + helpDimStyle.Render("Press any key to close...")
 
 	return helpPopupStyle.Render(helpText)
+}
+
+func (m Model) renderHelpOverlay() string {
+	// Render main view first
+	var content string
+	if m.layout == LayoutHorizontal {
+		listView := m.renderFileList()
+		diffView := m.renderDiffView()
+		content = lipgloss.JoinHorizontal(lipgloss.Top, listView, diffView)
+	} else {
+		listView := m.renderFileList()
+		diffView := m.renderDiffView()
+		content = lipgloss.JoinVertical(lipgloss.Left, listView, diffView)
+	}
+	statusBar := m.renderStatusBar()
+	mainView := lipgloss.JoinVertical(lipgloss.Left, content, statusBar)
+
+	// Dim the main view
+	dimmedView := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("240")).
+		Render(mainView)
+
+	// Place help on top
+	helpContent := m.renderHelp()
+	return lipgloss.Place(
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		helpContent,
+		lipgloss.WithWhitespaceChars(" "),
+		lipgloss.WithWhitespaceBackground(lipgloss.Color("0")),
+	) + dimmedView
 }
 
 func (m Model) overlayCenter(background, foreground string) string {

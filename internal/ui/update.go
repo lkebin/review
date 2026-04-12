@@ -57,6 +57,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.diffViewport.Width = m.getDiffWidth()
 		m.diffViewport.Height = m.getContentHeight()
+		// Re-render diff when window size changes (for word wrap)
+		if len(m.diffLines) > 0 {
+			m.diffViewport.SetContent(m.renderDiff())
+		}
 		return m, nil
 
 	case loadFilesMsg:
@@ -124,30 +128,18 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Ctrl+Minus - decrease focused window size
-	if msg.String() == "ctrl+-" || msg.String() == "ctrl+_" {
-		if m.layout == LayoutHorizontal {
-			if m.focus == FocusList && m.listWidth > 10 {
-				m.listWidth -= 5
-				m.diffViewport.Width = m.getDiffWidth()
-			} else if m.focus == FocusDiff && m.listWidth < m.width-20 {
-				m.listWidth += 5
-				m.diffViewport.Width = m.getDiffWidth()
-			}
+	// H/h - decrease/increase file list width (like vim)
+	switch msg.String() {
+	case "h":
+		if m.layout == LayoutHorizontal && m.listWidth > 10 {
+			m.listWidth -= 5
+			m.diffViewport.Width = m.getDiffWidth()
 		}
 		return m, nil
-	}
-
-	// Ctrl+Plus/Equals - increase focused window size
-	if msg.String() == "ctrl+=" || msg.String() == "ctrl++" {
-		if m.layout == LayoutHorizontal {
-			if m.focus == FocusList && m.listWidth < m.width/2 {
-				m.listWidth += 5
-				m.diffViewport.Width = m.getDiffWidth()
-			} else if m.focus == FocusDiff && m.listWidth > 10 {
-				m.listWidth -= 5
-				m.diffViewport.Width = m.getDiffWidth()
-			}
+	case "H":
+		if m.layout == LayoutHorizontal && m.listWidth < m.width/2 {
+			m.listWidth += 5
+			m.diffViewport.Width = m.getDiffWidth()
 		}
 		return m, nil
 	}
