@@ -16,9 +16,6 @@ type loadDiffMsg struct {
 	err   error
 }
 
-// toggleHelpMsg toggles help display
-type toggleHelpMsg struct{}
-
 // loadFiles is a command to load the file list
 func loadFiles(opts Options) tea.Cmd {
 	return func() tea.Msg {
@@ -81,6 +78,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.diffLines = msg.lines
+		// Defer diff rendering to next frame to improve perceived performance
+		return m, func() tea.Msg {
+			return diffContentReadyMsg{lines: msg.lines}
+		}
+	case diffContentReadyMsg:
 		m.diffViewport.SetContent(m.renderDiff())
 		m.diffViewport.GotoTop()
 		return m, nil
@@ -94,6 +96,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+type diffContentReadyMsg struct {
+	lines []DiffLine
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -118,21 +124,44 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Ctrl+Minus - decrease list width
+	// Ctrl+Minus - decrease focused window size
 	if msg.String() == "ctrl+-" || msg.String() == "ctrl+_" {
-		if m.layout == LayoutHorizontal && m.listWidth > 10 {
-			m.listWidth -= 5
-			m.diffViewport.Width = m.getDiffWidth()
+		if m.layout == LayoutHorizontal {
+			if m.focus == FocusList && m.listWidth > 10 {
+				m.listWidth -= 5
+				m.diffViewport.Width = m.getDiffWidth()
+			} else if m.focus == FocusDiff && m.listWidth < m.width-20 {
+				m.listWidth += 5
+				m.diffViewport.Width = m.getDiffWidth()
+			}
 		}
 		return m, nil
 	}
 
-	// Ctrl+Plus/Equals - increase list width
+	// Ctrl+Plus/Equals - increase focused window size
 	if msg.String() == "ctrl+=" || msg.String() == "ctrl++" {
-		if m.layout == LayoutHorizontal && m.listWidth < m.width/2 {
-			m.listWidth += 5
-			m.diffViewport.Width = m.getDiffWidth()
+		if m.layout == LayoutHorizontal {
+			if m.focus == FocusList && m.listWidth < m.width/2 {
+				m.listWidth += 5
+				m.diffViewport.Width = m.getDiffWidth()
+			} else if m.focus == FocusDiff && m.listWidth > 10 {
+				m.listWidth -= 5
+				m.diffViewport.Width = m.getDiffWidth()
+			}
 		}
+		return m, nil
+	}
+
+	// Shift+L - toggle layout
+	if msg.String() == "L" {
+		if m.layout == LayoutHorizontal {
+			m.layout = LayoutVertical
+		} else {
+			m.layout = LayoutHorizontal
+		}
+		// Resize viewport
+		m.diffViewport.Width = m.getDiffWidth()
+		m.diffViewport.Height = m.getContentHeight()
 		return m, nil
 	}
 
@@ -185,6 +214,16 @@ func (m Model) handleDiffKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "ctrl+u":
 		m.diffViewport.ScrollUp(m.diffViewport.Height / 2)
+		return m, nil
+
+	case "ctrl+f":
+		// Page down (forward)
+		m.diffViewport.ScrollDown(m.diffViewport.Height)
+		return m, nil
+
+	case "ctrl+b":
+		// Page up (backward)
+		m.diffViewport.ScrollUp(m.diffViewport.Height)
 		return m, nil
 
 	case "g":
