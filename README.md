@@ -1,9 +1,26 @@
 # Code Review in Vim
 
-This repository contains a Vim plugin that facilitates code review directly within the Vim editor. It is based on tpope/vim-fugitive. It allows user to view changes for staged files or whole branch compared to another branch.
+A Vim plugin for code review directly within the Vim editor. View changes for local modifications or compare branches in a split-window interface.
 
-# Usage
+## Features
 
-Use `:Review` command to start code review. By default, it compares the current branch with its origin branch. You can specify a different branch by providing it as an argument, e.g., `:Review develop`. The plugin will open a new tab with split windows, left and right, the left window show all changed files on current branch compared to the specified branch, and the right window shows the diff of the selected file.
+- Split-window interface: file list on left, diff on right
+- Real line numbers (old and new) displayed in diff view
+- File status indicators (A/M/D/R/C) with syntax highlighting
+- Tab completion for git refs (branches, tags)
+- Works with Vim 9.0+ and Neovim
 
-Use `:Review!` to review staged changes only.
+## Requirements
+
+- Vim 9.0+ or Neovim
+- Git
+
+## Usage
+
+- `:Review <branch>` - Compare current branch with specified branch
+- `:Review!` - Review local changes (staged and unstaged vs HEAD)
+- `:ReviewClose` - Close the review tab
+
+In the file list window:
+- `<CR>` - Open diff for selected file
+- `q` - Close review tab

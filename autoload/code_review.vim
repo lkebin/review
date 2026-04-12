@@ -186,9 +186,41 @@ function! s:do_close_review_tab() abort
   let s:closing_tab = 0
 endfunction
 
+" Complete git refs (branches, tags, remotes)
+function! code_review#complete(arglead, cmdline, cursorpos) abort
+  let refs = []
+  
+  " Get local branches
+  let branches = systemlist('git branch --format="%(refname:short)" 2>/dev/null')
+  if !v:shell_error
+    call extend(refs, branches)
+  endif
+  
+  " Get remote branches
+  let remotes = systemlist('git branch -r --format="%(refname:short)" 2>/dev/null')
+  if !v:shell_error
+    call extend(refs, remotes)
+  endif
+  
+  " Get tags
+  let tags = systemlist('git tag 2>/dev/null')
+  if !v:shell_error
+    call extend(refs, tags)
+  endif
+  
+  " Filter by prefix
+  if !empty(a:arglead)
+    call filter(refs, 'v:val =~# "^" . a:arglead')
+  endif
+  
+  return refs
+endfunction
+
 function! code_review#start(bang, ...) abort
-  if !exists('g:loaded_fugitive')
-    echoerr "vim-code-review requires tpope/vim-fugitive"
+  " Check if we're in a git repository
+  let git_check = systemlist('git rev-parse --git-dir 2>/dev/null')
+  if v:shell_error
+    echoerr "Not in a git repository"
     return
   endif
 
@@ -196,21 +228,47 @@ function! code_review#start(bang, ...) abort
 
   if empty(target)
     if a:bang
-      let target = 'HEAD'
+      " Check if HEAD exists (repo may have no commits yet)
+      let head_check = systemlist('git rev-parse --verify HEAD 2>/dev/null')
+      if v:shell_error
+        " No HEAD, use staged changes against empty tree
+        let target = '--cached'
+      else
+        let target = 'HEAD'
+      endif
     else
       echo "Usage: :Review <branch> (or :Review! for local changes)"
       return
     endif
   endif
 
-  let diff_cmd = 'git diff --name-only ' . shellescape(target)
+  let diff_cmd = 'git diff --name-status ' . shellescape(target)
 
-  let files = systemlist(diff_cmd)
+  let raw_files = systemlist(diff_cmd)
 
   if v:shell_error
-    echoerr "Error running git diff: " . join(files, "\n")
+    echoerr "Error running git diff: " . join(raw_files, "\n")
     return
   endif
+
+  if empty(raw_files)
+    echo "No changes found."
+    return
+  endif
+
+  " Parse status and file names
+  let files = []
+  let file_status = {}
+  for line in raw_files
+    " Format: STATUS<tab>filename (e.g., "M	src/file.vim")
+    let parts = split(line, '\t')
+    if len(parts) >= 2
+      let status = parts[0]
+      let fname = parts[1]
+      call add(files, status . ' ' . fname)
+      let file_status[fname] = status
+    endif
+  endfor
 
   if empty(files)
     echo "No changes found."
@@ -231,9 +289,10 @@ function! code_review#start(bang, ...) abort
   setlocal bufhidden=wipe
   setlocal noswapfile
   setlocal nobuflisted
-  setlocal nonumber
+  setlocal number
   setlocal norelativenumber
   setlocal cursorline
+  setlocal filetype=code_review_files
   setlocal statusline=[Code\ Review]\ Files
   
   " Save state variables in the buffer
@@ -291,7 +350,11 @@ function! code_review#start(bang, ...) abort
 endfunction
 
 function! code_review#open_diff() abort
-  let fname = getline('.')
+  let line = getline('.')
+  if empty(line) | return | endif
+
+  " Extract filename from "STATUS filename" format
+  let fname = substitute(line, '^[AMDRC]\s\+', '', '')
   if empty(fname) | return | endif
 
   let target = b:code_review_target
@@ -340,9 +403,6 @@ function! code_review#open_diff() abort
   setlocal noswapfile
   setlocal nonumber norelativenumber
   setlocal filetype=code_review
-  
-  " Auto-close tab when this buffer is closed
-  autocmd BufWipeout <buffer> call s:close_review_tab()
   
   " Construct git command
   let cmd = 'git diff --no-color ' . shellescape(target) . ' -- ' . shellescape(fname)

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Vim plugin for code review built on top of vim-fugitive. Provides `:Review` command to view diffs in a split-window interface.
+Vim plugin for code review. Provides `:Review` command to view diffs in a split-window interface with real line numbers.
 
 ## Testing
 
@@ -20,14 +20,17 @@ vim -u NONE -N -S test/run_tests.vim
 
 - `plugin/code_review.vim` - Command definitions, loaded once on startup
 - `autoload/code_review.vim` - Main implementation, lazy-loaded when commands are invoked
+- `syntax/code_review.vim` - Syntax highlighting for diff view
+- `syntax/code_review_files.vim` - Syntax highlighting for file list
 
 ### Key Functions
 
 - `code_review#start(bang, ...)` - Entry point; creates review tab with file list (left) and diff viewer (right)
 - `code_review#open_diff()` - Displays diff for selected file in right pane
 - `code_review#close()` - Closes the review tab
-- `s:add_line_numbers(output)` - Adds virtual text line numbers to diff view
-- `s:has_virtual_text()` - Checks for Vim 9.0+ or Neovim virtual text support
+- `code_review#complete(arglead, cmdline, cursorpos)` - Tab completion for git refs
+- `s:calculate_line_numbers(output)` - Parses hunk headers to calculate real line numbers
+- `s:prepend_line_numbers(output, line_numbers)` - Prepends line numbers to diff content
 
 ### State Management
 
@@ -58,17 +61,19 @@ setlocal nomodifiable  " Set after content is populated
 
 For features requiring virtual text, use this compatibility pattern:
 ```vim
-if has('nvim')
-  " Use nvim_buf_set_extmark() with namespace
+if has('nvim-0.10')
+  " Use nvim_buf_set_extmark() with virt_text_pos='inline'
 else
-  " Use prop_type_add() / prop_add() for Vim 9.0+
+  " Prepend line numbers to buffer content (Vim fallback)
 endif
 ```
 
-### Dependencies
+### Requirements
 
-Requires [vim-fugitive](https://github.com/tpope/vim-fugitive) - the plugin checks for `g:loaded_fugitive` before running.
+- Vim 9.0+ or Neovim
+- Git (uses direct git commands, no vim-fugitive dependency)
 
 ### Compatibility
 
-Line number virtual text requires Vim 9.0+ or Neovim. The feature degrades gracefully on older versions.
+- Neovim 0.10+: Uses inline virtual text for line numbers
+- Vim / older Neovim: Prepends line numbers to buffer content

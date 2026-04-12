@@ -6,22 +6,26 @@ if exists("b:current_syntax")
   finish
 endif
 
-" Hunk headers: @@ -old,count +new,count @@
-syntax match codeReviewHunk /^.*@@\s*-\d\+.*+\d\+.*@@.*$/
+" Line numbers prefix (10 chars: "  42   45 " or "          ")
+syntax match codeReviewLineNr /^\s*\d*\s\+\d*\s/ contained
 
-" Added lines: contain + after line numbers
-syntax match codeReviewAdded /^.\{-}+.*$/ contains=codeReviewLineNr
+" Hunk headers: line numbers followed by @@ ... @@
+syntax match codeReviewHunk /^\s\{10}@@.*@@.*$/
 
-" Removed lines: contain - after line numbers  
-syntax match codeReviewRemoved /^.\{-}-.*$/ contains=codeReviewLineNr
+" Added lines: line numbers followed by +
+syntax match codeReviewAdded /^\s*\d*\s\+\d*\s+.*$/ contains=codeReviewLineNr
 
-" Line numbers at the start
-syntax match codeReviewLineNr /^\s*\d*\s\+\d*\s\+/ contained
+" Removed lines: line numbers followed by -
+syntax match codeReviewRemoved /^\s*\d*\s\+\d*\s-.*$/ contains=codeReviewLineNr
 
-" Link to standard diff highlight groups from colorscheme
-highlight! link codeReviewAdded DiffAdd
-highlight! link codeReviewRemoved DiffDelete
-highlight! link codeReviewHunk DiffChange
+" Context lines (space after line numbers)
+syntax match codeReviewContext /^\s*\d\+\s\+\d\+\s .*$/ contains=codeReviewLineNr
+
+" Link to standard diff highlight groups (same as vim-fugitive)
+highlight! link codeReviewAdded Added
+highlight! link codeReviewRemoved Removed
+highlight! link codeReviewHunk Statement
 highlight! link codeReviewLineNr LineNr
+highlight! link codeReviewContext Normal
 
 let b:current_syntax = "code_review"
