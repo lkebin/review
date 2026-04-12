@@ -5,10 +5,13 @@ A terminal-based code review tool written in Go.
 ## Features
 
 - **Split-view interface**: File list on the left, diff content on the right
-- **Vim-style keybindings**: j/k navigation, q to quit
-- **Syntax highlighting**: Powered by Chroma for 181+ languages
+- **File statistics**: Shows added/removed lines per file (+add/-del)
+- **Vim-style keybindings**: j/k navigation, efficient shortcuts
+- **Syntax highlighting**: Powered by Chroma for 180+ languages
 - **Line numbers**: Shows both old and new line numbers
+- **Word wrap**: Long lines wrap with continuation indicator
 - **Layout switching**: Toggle between horizontal and vertical split
+- **External editor**: Open files in $EDITOR from the tool
 - **Zero configuration**: Works out of the box
 
 ## Installation
@@ -43,16 +46,40 @@ review -U 10 main
 
 ## Keybindings
 
+### Navigation
+
 | Key | Action |
 |-----|--------|
-| `j` / `↓` | Move down (file list or diff scroll) |
-| `k` / `↑` | Move up (file list or diff scroll) |
-| `h` / `←` | Focus file list |
-| `l` / `→` | Focus diff / Toggle layout |
-| `Tab` | Switch focus between panels |
+| `j` / `↓` | Move down / Scroll down |
+| `k` / `↑` | Move up / Scroll up |
 | `Enter` | View diff for selected file |
-| `e` | Open file in $EDITOR |
-| `r` | Refresh diff |
+
+### Window Management
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+W` | Switch focus between file list and diff |
+| `h` / `H` | Shrink / Grow file list width |
+| `L` (Shift+l) | Toggle horizontal/vertical layout |
+
+### Diff Navigation
+
+| Key | Action |
+|-----|--------|
+| `g` | Go to top of diff |
+| `G` | Go to bottom of diff |
+| `Ctrl+D` | Half page down |
+| `Ctrl+U` | Half page up |
+| `Ctrl+F` | Page forward (vim style) |
+| `Ctrl+B` | Page backward (vim style) |
+
+### Actions
+
+| Key | Action |
+|-----|--------|
+| `e` | Open current file in $EDITOR |
+| `r` | Refresh file list |
+| `?` | Show help |
 | `q` | Quit |
 
 ## Layout
@@ -60,27 +87,27 @@ review -U 10 main
 ### Horizontal (default)
 ```
 ┌─────────────────┬─────────────────────────────────────┐
-│ M  src/main.go  │@@ -10,7 +10,8 @@ func main() {      │
-│ A  src/util.go  │ 10  10   // Setup                   │
-│ D  README.md    │ 11     - fmt.Println("old")         │
-│                 │    11 + fmt.Println("new")          │
-│                 │ 12  12   // Run                     │
+│ A  main.go      │  1   1   package main               │
+│ M  util.go      │  2   2                                │
+│ D  old.go       │  3      -import "fmt"               │
+│ (+5/-3)         │  4      +import "strings"           │
 ├─────────────────┴─────────────────────────────────────┤
-│ current > main | Files: 3 | 1/3 | Layout: H | [q]uit  │
+│ current > main | Files: 3 | 1/3 | Focus: List | [?]   │
 └───────────────────────────────────────────────────────┘
 ```
 
-### Vertical (press `l` to toggle)
+### Vertical (press `L` to toggle)
 ```
 ┌───────────────────────────────────────────────────────┐
-│ M  src/main.go                                        │
-│ A  src/util.go                                        │
-│ D  README.md                                          │
+│ A  main.go (+5/-3)                                    │
+│ M  util.go (+10/-2)                                   │
+│ D  old.go (+0/-50)                                    │
 ├───────────────────────────────────────────────────────┤
-│@@ -10,7 +10,8 @@ func main() {                       │
-│ 10  10   // Setup                                     │
+│  1   1   package main                                 │
+│  3      -import "fmt"                                 │
+│  4      +import "strings"                             │
 ├───────────────────────────────────────────────────────┤
-│ current > main | Files: 3 | 1/3 | Layout: V | [q]uit  │
+│ current > main | Files: 3 | 1/3 | Focus: Diff | [?]   │
 └───────────────────────────────────────────────────────┘
 ```
 
