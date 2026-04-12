@@ -50,11 +50,14 @@ type Model struct {
 	diffViewport viewport.Model
 
 	// Syntax highlighter
-	highlighter *highlight.Highlighter
+	highlighter *highlight.SimpleHighlighter
 
 	// Status
 	err     error
 	loading bool
+
+	// Help popup
+	showHelp bool
 }
 
 // FileInfo represents a file in the review

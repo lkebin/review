@@ -16,6 +16,9 @@ type loadDiffMsg struct {
 	err   error
 }
 
+// toggleHelpMsg toggles help display
+type toggleHelpMsg struct{}
+
 // loadFiles is a command to load the file list
 func loadFiles(opts Options) tea.Cmd {
 	return func() tea.Msg {
@@ -34,6 +37,20 @@ func loadDiff(opts Options, file string) tea.Cmd {
 
 // Update handles messages and updates the model
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Handle help popup first
+	if m.showHelp {
+		switch msgType := msg.(type) {
+		case tea.KeyMsg:
+			// Any key closes help
+			_ = msgType
+			m.showHelp = false
+			return m, nil
+		case tea.MouseMsg:
+			m.showHelp = false
+			return m, nil
+		}
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		return m.handleKey(msg)
@@ -58,16 +75,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case loadDiffMsg:
+		m.loading = false
 		if msg.err != nil {
 			m.err = msg.err
 			return m, nil
 		}
 		m.diffLines = msg.lines
 		m.diffViewport.SetContent(m.renderDiff())
+		m.diffViewport.GotoTop()
 		return m, nil
 	}
 
-	// Handle viewport updates
+	// Handle viewport updates (mouse scrolling etc)
 	if m.focus == FocusDiff {
 		var cmd tea.Cmd
 		m.diffViewport, cmd = m.diffViewport.Update(msg)
@@ -78,107 +97,102 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "q", "ctrl+c":
-		return m, tea.Quit
+	// Help popup toggle
+	if msg.String() == "?" {
+		m.showHelp = !m.showHelp
+		return m, nil
+	}
 
-	case "tab":
+	// Quit
+	if msg.String() == "q" || msg.String() == "ctrl+c" {
+		return m, tea.Quit
+	}
+
+	// Ctrl+W - toggle focus
+	if msg.String() == "ctrl+w" {
 		if m.focus == FocusList {
 			m.focus = FocusDiff
 		} else {
 			m.focus = FocusList
 		}
 		return m, nil
+	}
 
-	case "h", "left":
-		if m.focus == FocusDiff && m.layout == LayoutHorizontal {
-			m.focus = FocusList
-			return m, nil
-		}
-		if m.focus == FocusList {
-			// Decrease list width
-			if m.listWidth > 10 {
-				m.listWidth -= 5
-				m.diffViewport.Width = m.getDiffWidth()
-			}
-		}
-		return m, nil
-
-	case "l", "right":
-		if m.focus == FocusList && m.layout == LayoutHorizontal {
-			m.focus = FocusDiff
-			return m, nil
-		}
-		if m.focus == FocusDiff {
-			// Toggle layout with L
-			if m.layout == LayoutHorizontal {
-				m.layout = LayoutVertical
-			} else {
-				m.layout = LayoutHorizontal
-			}
-			// Resize viewport
-			m.diffViewport.Width = m.getDiffWidth()
-			m.diffViewport.Height = m.getContentHeight()
-		}
-		return m, nil
-
-	case "<", ",":
-		// Decrease list width
-		if m.listWidth > 10 {
+	// Ctrl+Minus - decrease list width
+	if msg.String() == "ctrl+-" || msg.String() == "ctrl+_" {
+		if m.layout == LayoutHorizontal && m.listWidth > 10 {
 			m.listWidth -= 5
 			m.diffViewport.Width = m.getDiffWidth()
 		}
 		return m, nil
+	}
 
-	case ">", ".":
-		// Increase list width
+	// Ctrl+Plus/Equals - increase list width
+	if msg.String() == "ctrl+=" || msg.String() == "ctrl++" {
 		if m.layout == LayoutHorizontal && m.listWidth < m.width/2 {
 			m.listWidth += 5
 			m.diffViewport.Width = m.getDiffWidth()
 		}
 		return m, nil
+	}
 
+	// Window-specific key handling
+	if m.focus == FocusList {
+		return m.handleListKeys(msg)
+	}
+	return m.handleDiffKeys(msg)
+}
+
+func (m Model) handleListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
 	case "j", "down":
-		if m.focus == FocusList {
-			if m.cursor < len(m.files)-1 {
-				m.cursor++
-				return m, loadDiff(m.options, m.files[m.cursor].Name)
-			}
-		} else {
-			// Scroll diff down
-			m.diffViewport.ScrollDown(1)
+		if m.cursor < len(m.files)-1 {
+			m.cursor++
+			m.loading = true
+			return m, loadDiff(m.options, m.files[m.cursor].Name)
 		}
 		return m, nil
 
 	case "k", "up":
-		if m.focus == FocusList {
-			if m.cursor > 0 {
-				m.cursor--
-				return m, loadDiff(m.options, m.files[m.cursor].Name)
-			}
-		} else {
-			// Scroll diff up
-			m.diffViewport.ScrollUp(1)
-		}
-		return m, nil
-
-	case "g":
-		if m.focus == FocusDiff {
-			m.diffViewport.GotoTop()
-		}
-		return m, nil
-
-	case "G":
-		if m.focus == FocusDiff {
-			m.diffViewport.GotoBottom()
+		if m.cursor > 0 {
+			m.cursor--
+			m.loading = true
+			return m, loadDiff(m.options, m.files[m.cursor].Name)
 		}
 		return m, nil
 
 	case "enter":
-		if m.focus == FocusList && m.cursor < len(m.files) {
-			m.focus = FocusDiff
-			return m, loadDiff(m.options, m.files[m.cursor].Name)
-		}
+		m.focus = FocusDiff
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m Model) handleDiffKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "j", "down":
+		m.diffViewport.ScrollDown(1)
+		return m, nil
+
+	case "k", "up":
+		m.diffViewport.ScrollUp(1)
+		return m, nil
+
+	case "ctrl+d":
+		m.diffViewport.ScrollDown(m.diffViewport.Height / 2)
+		return m, nil
+
+	case "ctrl+u":
+		m.diffViewport.ScrollUp(m.diffViewport.Height / 2)
+		return m, nil
+
+	case "g":
+		m.diffViewport.GotoTop()
+		return m, nil
+
+	case "G":
+		m.diffViewport.GotoBottom()
 		return m, nil
 	}
 
