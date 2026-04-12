@@ -1,6 +1,9 @@
 package ui
 
 import (
+	"os"
+	"os/exec"
+
 	"github.com/charmbracelet/bubbletea"
 )
 
@@ -89,6 +92,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case diffContentReadyMsg:
 		m.diffViewport.SetContent(m.renderDiff())
 		m.diffViewport.GotoTop()
+		return m, nil
+
+	case editorFinishedMsg:
+		// Editor closed, refresh the diff
+		if m.cursor < len(m.files) {
+			return m, loadDiff(m.options, m.files[m.cursor].Name)
+		}
 		return m, nil
 	}
 
@@ -225,6 +235,17 @@ func (m Model) handleDiffKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "G":
 		m.diffViewport.GotoBottom()
 		return m, nil
+
+	case "e":
+		// Open file in external editor
+		if m.cursor < len(m.files) {
+			return m, openInEditor(m.files[m.cursor].Name)
+		}
+		return m, nil
+
+	case "r":
+		// Refresh - reload files and diff
+		return m, loadFiles(m.options)
 	}
 
 	return m, nil
@@ -255,4 +276,28 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// openInEditor opens the given file in $EDITOR
+func openInEditor(filename string) tea.Cmd {
+	return func() tea.Msg {
+		editor := os.Getenv("EDITOR")
+		if editor == "" {
+			editor = "vim"
+		}
+
+		cmd := exec.Command(editor, filename)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		// Suspend bubbletea, run editor, resume
+		return tea.ExecProcess(cmd, func(err error) tea.Msg {
+			return editorFinishedMsg{err: err}
+		})
+	}
+}
+
+type editorFinishedMsg struct {
+	err error
 }

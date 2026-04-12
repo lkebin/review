@@ -5,7 +5,7 @@ import (
 	"github.com/kbliu/review/internal/git"
 )
 
-// getFiles retrieves the list of changed files
+// getFiles retrieves the list of changed files with statistics
 func getFiles(opts Options) ([]FileInfo, error) {
 	gitOpts := git.Options{
 		Target:       opts.Target,
@@ -18,12 +18,22 @@ func getFiles(opts Options) ([]FileInfo, error) {
 		return nil, err
 	}
 
-	// Convert to UI FileInfo
+	// Convert to UI FileInfo and calculate stats
 	result := make([]FileInfo, len(files))
 	for i, f := range files {
+		// Get diff for this file to calculate stats
+		content, err := git.GetDiff(gitOpts, f.Name)
+		if err != nil {
+			continue
+		}
+		lines := diff.Parse(content)
+		stats := diff.CalculateStats(lines)
+
 		result[i] = FileInfo{
-			Status: f.Status,
-			Name:   f.Name,
+			Status:  f.Status,
+			Name:    f.Name,
+			Added:   stats.Added,
+			Removed: stats.Removed,
 		}
 	}
 	return result, nil

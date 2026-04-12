@@ -6,6 +6,14 @@ import (
 	"github.com/kbliu/review/internal/highlight"
 )
 
+// FileInfo represents a file in the review
+type FileInfo struct {
+	Status  string // A, M, D, R, C
+	Name    string
+	Added   int
+	Removed int
+}
+
 // FocusType indicates which panel has focus
 type FocusType int
 
@@ -58,12 +66,6 @@ type Model struct {
 
 	// Help popup
 	showHelp bool
-}
-
-// FileInfo represents a file in the review
-type FileInfo struct {
-	Status string // A, M, D, R, C
-	Name   string
 }
 
 // LineType represents the type of a diff line

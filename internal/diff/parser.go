@@ -109,3 +109,23 @@ func parseHunkHeader(line string) (oldStart, newStart int) {
 	}
 	return
 }
+
+// Stats represents diff statistics
+type Stats struct {
+	Added   int
+	Removed int
+}
+
+// CalculateStats calculates the diff statistics from lines
+func CalculateStats(lines []Line) Stats {
+	var stats Stats
+	for _, line := range lines {
+		switch line.Type {
+		case LineAdded:
+			stats.Added++
+		case LineRemoved:
+			stats.Removed++
+		}
+	}
+	return stats
+}

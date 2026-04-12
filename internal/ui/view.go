@@ -59,7 +59,10 @@ func (m Model) View() string {
 	}
 
 	if m.err != nil {
-		return fmt.Sprintf("Error: %v\n\nPress q to quit.", m.err)
+		errorStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("196")).
+			Bold(true)
+		return errorStyle.Render(fmt.Sprintf("Error: %v", m.err)) + "\n\nPress q to quit."
 	}
 
 	if len(m.files) == 0 {
@@ -92,10 +95,34 @@ func (m Model) View() string {
 func (m Model) renderFileList() string {
 	var lines []string
 
+	// Status color mapping
+	statusColor := map[string]lipgloss.Color{
+		"A": lipgloss.Color("82"),  // Added - Green
+		"M": lipgloss.Color("208"), // Modified - Orange
+		"D": lipgloss.Color("196"), // Deleted - Red
+		"R": lipgloss.Color("63"),  // Renamed - Purple
+		"C": lipgloss.Color("39"),  // Copied - Blue
+	}
+
 	for i, f := range m.files {
-		line := fmt.Sprintf("%s %s", f.Status, f.Name)
+		// Color for status
+		color := statusColor[f.Status]
+		if color == "" {
+			color = lipgloss.Color("250")
+		}
+		statusStyle := lipgloss.NewStyle().Foreground(color)
+
+		// Format: [STATUS] filename (+add/-del)
+		stats := ""
+		if f.Added > 0 || f.Removed > 0 {
+			stats = fmt.Sprintf(" (+%d/-%d)", f.Added, f.Removed)
+		}
+
+		line := statusStyle.Render(f.Status) + " " + f.Name + lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(stats)
+
 		if i == m.cursor {
-			line = selectedStyle.Render(line)
+			// Highlight selected line
+			line = selectedStyle.Render(fmt.Sprintf("%s %s%s", f.Status, f.Name, stats))
 		}
 		lines = append(lines, line)
 	}
@@ -244,6 +271,8 @@ func (m Model) renderHelp() string {
 		{"g / G", "Go to top/bottom of diff"},
 		{"Ctrl+D / Ctrl+U", "Half page down/up"},
 		{"Ctrl+F / Ctrl+B", "Page forward/backward (vim style)"},
+		{"e", "Open file in $EDITOR"},
+		{"r", "Refresh (reload files)"},
 		{"?", "Toggle this help"},
 		{"q", "Quit"},
 	}
