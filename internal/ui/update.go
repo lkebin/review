@@ -91,12 +91,26 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "h", "left":
-		m.focus = FocusList
+		if m.focus == FocusDiff && m.layout == LayoutHorizontal {
+			m.focus = FocusList
+			return m, nil
+		}
+		if m.focus == FocusList {
+			// Decrease list width
+			if m.listWidth > 10 {
+				m.listWidth -= 5
+				m.diffViewport.Width = m.getDiffWidth()
+			}
+		}
 		return m, nil
 
 	case "l", "right":
+		if m.focus == FocusList && m.layout == LayoutHorizontal {
+			m.focus = FocusDiff
+			return m, nil
+		}
 		if m.focus == FocusDiff {
-			// Toggle layout
+			// Toggle layout with L
 			if m.layout == LayoutHorizontal {
 				m.layout = LayoutVertical
 			} else {
@@ -105,8 +119,22 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Resize viewport
 			m.diffViewport.Width = m.getDiffWidth()
 			m.diffViewport.Height = m.getContentHeight()
-		} else {
-			m.focus = FocusDiff
+		}
+		return m, nil
+
+	case "<", ",":
+		// Decrease list width
+		if m.listWidth > 10 {
+			m.listWidth -= 5
+			m.diffViewport.Width = m.getDiffWidth()
+		}
+		return m, nil
+
+	case ">", ".":
+		// Increase list width
+		if m.layout == LayoutHorizontal && m.listWidth < m.width/2 {
+			m.listWidth += 5
+			m.diffViewport.Width = m.getDiffWidth()
 		}
 		return m, nil
 
@@ -116,6 +144,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.cursor++
 				return m, loadDiff(m.options, m.files[m.cursor].Name)
 			}
+		} else {
+			// Scroll diff down
+			m.diffViewport.ScrollDown(1)
 		}
 		return m, nil
 
@@ -125,6 +156,21 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.cursor--
 				return m, loadDiff(m.options, m.files[m.cursor].Name)
 			}
+		} else {
+			// Scroll diff up
+			m.diffViewport.ScrollUp(1)
+		}
+		return m, nil
+
+	case "g":
+		if m.focus == FocusDiff {
+			m.diffViewport.GotoTop()
+		}
+		return m, nil
+
+	case "G":
+		if m.focus == FocusDiff {
+			m.diffViewport.GotoBottom()
 		}
 		return m, nil
 
@@ -142,7 +188,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // Helper methods for dimensions
 func (m Model) getListWidth() int {
 	if m.layout == LayoutHorizontal {
-		return min(30, m.width/3)
+		return min(m.listWidth, m.width/2)
 	}
 	return m.width
 }

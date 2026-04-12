@@ -108,7 +108,7 @@ func (m Model) renderStatusBar() string {
 		focus = "Diff"
 	}
 
-	status := fmt.Sprintf("%s > %s | Files: %d | %d/%d | Layout: %s | Focus: %s | [h]elp [q]uit",
+	status := fmt.Sprintf("%s > %s | Files: %d | %d/%d | Layout: %s | Focus: %s | </> resize | [l]ayout | [q]uit",
 		"current", target, len(m.files), m.cursor+1, len(m.files), layout, focus)
 
 	return statusBarStyle.Width(m.width).Render(status)
@@ -116,6 +116,12 @@ func (m Model) renderStatusBar() string {
 
 func (m Model) renderDiff() string {
 	var lines []string
+
+	// Get current filename for syntax highlighting
+	filename := ""
+	if m.cursor < len(m.files) {
+		filename = m.files[m.cursor].Name
+	}
 
 	for _, line := range m.diffLines {
 		oldNo := ""
@@ -134,15 +140,34 @@ func (m Model) renderDiff() string {
 		}
 
 		lineNo := lineNoStyle.Render(fmt.Sprintf("%s %s ", oldNo, newNo))
-		content := line.Content
 
+		// Render content with syntax highlighting
+		var content string
 		switch line.Type {
-		case LineAdded:
-			content = addedStyle.Render(content)
-		case LineRemoved:
-			content = removedStyle.Render(content)
 		case LineHunkHeader:
-			content = hunkStyle.Render(content)
+			content = hunkStyle.Render(line.Content)
+		default:
+			// Use syntax highlighting for code lines
+			tokens := m.highlighter.HighlightDiffLine(line.Content, filename)
+			var highlighted strings.Builder
+			for _, token := range tokens {
+				if token.Color != "" {
+					highlighted.WriteString(token.Color)
+					highlighted.WriteString(token.Text)
+					highlighted.WriteString("\x1b[0m") // Reset
+				} else {
+					// Apply diff type color
+					text := token.Text
+					switch line.Type {
+					case LineAdded:
+						text = addedStyle.Render(text)
+					case LineRemoved:
+						text = removedStyle.Render(text)
+					}
+					highlighted.WriteString(text)
+				}
+			}
+			content = highlighted.String()
 		}
 
 		lines = append(lines, lineNo+content)

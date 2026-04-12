@@ -1,10 +1,10 @@
 package highlight
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/alecthomas/chroma/v2"
-	"github.com/alecthomas/chroma/v2/formatters"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
 )
@@ -45,20 +45,14 @@ func (h *Highlighter) Highlight(content string, filename string) []Line {
 	}
 	lexer = chroma.Coalesce(lexer)
 
-	formatter := formatters.Get("tokens")
-	if formatter == nil {
-		return h.noHighlight(content)
-	}
-
+	// Tokenise the content
 	iterator, err := lexer.Tokenise(nil, content)
 	if err != nil {
 		return h.noHighlight(content)
 	}
 
-	tokens, err := formatter.Format(iterator)
-	if err != nil {
-		return h.noHighlight(content)
-	}
+	// Get all tokens
+	tokens := iterator.Tokens()
 
 	return h.tokensToLines(tokens)
 }
@@ -82,17 +76,17 @@ func (h *Highlighter) tokensToLines(tokens []chroma.Token) []Line {
 
 	for _, token := range tokens {
 		tokenType := token.Type
-		color := h.getColor(tokenType)
+		color := h.getANSIColor(tokenType)
 
 		// Split token by newlines
 		parts := strings.Split(token.Value, "\n")
 		for i, part := range parts {
-			if i > 0 {
+			if i > 0 && len(currentLine) > 0 {
 				// New line, save current and start new
 				lines = append(lines, Line{Tokens: currentLine})
 				currentLine = nil
 			}
-			if part != "" {
+			if part != "" || len(currentLine) > 0 {
 				currentLine = append(currentLine, Token{
 					Text:  part,
 					Color: color,
@@ -109,50 +103,49 @@ func (h *Highlighter) tokensToLines(tokens []chroma.Token) []Line {
 	return lines
 }
 
-// getColor returns the ANSI color for a token type
-func (h *Highlighter) getColor(tokenType chroma.TokenType) string {
+// getANSIColor returns the ANSI color code for a token type
+func (h *Highlighter) getANSIColor(tokenType chroma.TokenType) string {
 	entry := h.style.Get(tokenType)
 	if entry.IsZero() {
 		return ""
 	}
 
-	var codes []string
-
-	// Foreground color
+	// Convert color to ANSI 256 color code
 	if entry.Colour.IsSet() {
-		// Convert to ANSI 256 color
 		c := entry.Colour
-		code := 16 + (36 * (c.Red() * 5 / 255)) + (6 * (c.Green() * 5 / 255)) + (c.Blue() * 5 / 255)
-		codes = append(codes, "38;5;"+string(rune('0'+int(code))))
-	}
-
-	if len(codes) > 0 {
-		return "\x1b[" + strings.Join(codes, ";") + "m"
+		// Calculate 256-color code
+		r := c.Red() * 5 / 255
+		g := c.Green() * 5 / 255
+		b := c.Blue() * 5 / 255
+		code := 16 + 36*r + 6*g + b
+		return fmt.Sprintf("\x1b[38;5;%dm", code)
 	}
 	return ""
 }
 
-// HighlightDiffLine highlights a single diff line (without the +/- prefix)
+// HighlightDiffLine highlights a single diff line
 func (h *Highlighter) HighlightDiffLine(line string, filename string) []Token {
-	// Remove diff prefix if present
-	content := line
-	if len(line) > 0 && (line[0] == '+' || line[0] == '-' || line[0] == ' ') {
-		content = line[1:]
-	}
+	// For diff lines, we need to:
+	// 1. Keep the +/- prefix
+	// 2. Highlight the rest of the content
 
-	// Keep the prefix
-	prefix := line[:len(line)-len(content)]
-
-	tokens := h.Highlight(content, filename)
-	if len(tokens) == 0 {
+	if len(line) == 0 {
 		return []Token{{Text: line, Color: ""}}
 	}
 
-	// Prepend the prefix to the first token
-	result := []Token{{Text: prefix, Color: ""}}
-	if len(tokens[0].Tokens) > 0 {
-		result = append(result, tokens[0].Tokens...)
+	// Get the prefix (+, -, or space)
+	prefix := line[:1]
+	content := line[1:]
+
+	// Highlight the content
+	lines := h.Highlight(content, filename)
+	if len(lines) == 0 {
+		return []Token{{Text: line, Color: ""}}
 	}
+
+	// Prepend the prefix as first token
+	result := []Token{{Text: prefix, Color: ""}}
+	result = append(result, lines[0].Tokens...)
 
 	return result
 }

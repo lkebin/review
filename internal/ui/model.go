@@ -1,8 +1,9 @@
 package ui
 
 import (
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/kbliu/review/internal/highlight"
 )
 
 // FocusType indicates which panel has focus
@@ -30,8 +31,9 @@ type Model struct {
 	layout LayoutType
 
 	// Dimensions
-	width  int
-	height int
+	width     int
+	height    int
+	listWidth int // Adjustable file list width
 
 	// File list
 	files  []FileInfo
@@ -46,6 +48,9 @@ type Model struct {
 
 	// Viewport for diff scrolling
 	diffViewport viewport.Model
+
+	// Syntax highlighter
+	highlighter *highlight.Highlighter
 
 	// Status
 	err     error
@@ -79,10 +84,12 @@ type DiffLine struct {
 // NewModel creates a new model with the given options
 func NewModel(opts Options) Model {
 	return Model{
-		options: opts,
-		layout:  LayoutHorizontal,
-		focus:   FocusList,
-		loading: true,
+		options:     opts,
+		layout:      LayoutHorizontal,
+		focus:       FocusList,
+		loading:     true,
+		listWidth:   30,
+		highlighter: highlight.New("github"),
 	}
 }
 
