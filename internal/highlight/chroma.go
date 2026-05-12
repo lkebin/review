@@ -126,7 +126,7 @@ func (h *SimpleHighlighter) TokenizeFile(filename string, lines []string) [][]To
 	}
 	lexer = chroma.Coalesce(lexer)
 
-	full := strings.Join(lines, "\n")
+	full := strings.Join(lines, "\n") + "\n"
 
 	iterator, err := lexer.Tokenise(nil, full)
 	if err != nil {
@@ -140,13 +140,14 @@ func (h *SimpleHighlighter) TokenizeFile(filename string, lines []string) [][]To
 	result := make([][]Token, len(lines))
 	lineIdx := 0
 
+outer:
 	for _, tok := range iterator.Tokens() {
 		text := tok.Value
 		tokType := tok.Type.String()
 
 		for text != "" {
 			if lineIdx >= len(result) {
-				break
+				break outer
 			}
 			nlPos := strings.Index(text, "\n")
 			if nlPos == -1 {
