@@ -50,6 +50,7 @@ type Model struct {
 	// Diff content
 	currentFile string
 	diffLines   []DiffLine
+	diffCursor  int
 
 	// Focus
 	focus FocusType
@@ -93,7 +94,7 @@ func NewModel(opts Options) Model {
 		layout:      LayoutHorizontal,
 		focus:       FocusList,
 		loading:     true,
-		listWidth:   30,
+		listWidth:   32,
 		highlighter: highlight.New("github"),
 	}
 }

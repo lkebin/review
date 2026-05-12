@@ -5,51 +5,110 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/kbliu/review/internal/highlight"
 )
 
 // Styles
 var (
-	listStyle = lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder(), false, true, false, false).
-		BorderForeground(lipgloss.Color("240"))
-
 	diffStyle = lipgloss.NewStyle()
 
-	statusBarStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("236")).
-		Foreground(lipgloss.Color("250")).
-		Padding(0, 1)
+	addedBgStyle = lipgloss.NewStyle().
+			Background(lipgloss.Color("22")) // dark green bg
 
-	selectedStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("238")).
-		Bold(true)
+	removedBgStyle = lipgloss.NewStyle().
+			Background(lipgloss.Color("52")) // dark red bg
 
-	addedStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("82")) // Green
-
-	removedStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("196")) // Red
+	currentLineBg = lipgloss.NewStyle().
+			Background(lipgloss.Color("238")) // subtle highlight for cursor line
 
 	hunkStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("240")) // Gray
+			Foreground(lipgloss.Color("240")) // Gray
 
 	lineNoStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("240")) // Gray
+			Foreground(lipgloss.Color("240")) // Gray
 
 	helpPopupStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("62")).
-		Padding(1, 2)
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("62")).
+			Padding(1, 2)
 
 	helpTitleStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("208"))
+			Bold(true).
+			Foreground(lipgloss.Color("208"))
 
 	helpKeyStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("86"))
+			Foreground(lipgloss.Color("86"))
 
 	helpDimStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245"))
+			Foreground(lipgloss.Color("245"))
+
+	topBrandStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("46")).
+			Background(lipgloss.Color("233")).
+			Bold(true)
+
+	topPathStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("252")).
+			Background(lipgloss.Color("233"))
+
+	topMetaStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("46")).
+			Background(lipgloss.Color("236")).
+			Bold(true)
+
+	bottomBarStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("23")).
+			Background(lipgloss.Color("51"))
+
+	railContainerStyle = lipgloss.NewStyle().
+				Background(lipgloss.Color("235")).
+				Foreground(lipgloss.Color("250"))
+
+	railIdentityStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("46")).
+				Bold(true)
+
+	railMetaStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("245"))
+
+	railSectionStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("87"))
+
+	railSectionActiveStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("16")).
+				Background(lipgloss.Color("46")).
+				Bold(true)
+
+	railSecondaryStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("243"))
+
+	railFileStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("252"))
+
+	railSelectedStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("16")).
+				Background(lipgloss.Color("51")).
+				Bold(true)
+
+	workspaceHeaderStyle = lipgloss.NewStyle().
+				Background(lipgloss.Color("233")).
+				Foreground(lipgloss.Color("252")).
+				Padding(1, 1, 0, 1)
+
+	workspaceLabelStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("87"))
+
+	workspaceTitleStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("252")).
+				Bold(true)
+
+	workspaceAddStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("46")).
+				Bold(true)
+
+	workspaceRemoveStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("203")).
+				Bold(true)
 )
 
 // View renders the UI
@@ -69,97 +128,174 @@ func (m Model) View() string {
 		return "No changes found.\n\nPress q to quit."
 	}
 
-	var content string
-
-	if m.layout == LayoutHorizontal {
-		listView := m.renderFileList()
-		diffView := m.renderDiffView()
-		content = lipgloss.JoinHorizontal(lipgloss.Top, listView, diffView)
-	} else {
-		listView := m.renderFileList()
-		diffView := m.renderDiffView()
-		content = lipgloss.JoinVertical(lipgloss.Left, listView, diffView)
-	}
-
-	statusBar := m.renderStatusBar()
-	mainView := lipgloss.JoinVertical(lipgloss.Left, content, statusBar)
-
-	// Overlay help if shown
 	if m.showHelp {
 		return m.renderHelpOverlay()
 	}
 
-	return mainView
+	return m.renderShell()
 }
 
-func (m Model) renderFileList() string {
-	var lines []string
+func (m Model) renderShell() string {
+	var body string
+	if m.layout == LayoutHorizontal {
+		body = lipgloss.JoinHorizontal(lipgloss.Top, m.renderNavRail(), m.renderWorkspace())
+	} else {
+		body = lipgloss.JoinVertical(lipgloss.Left, m.renderNavRail(), m.renderWorkspace())
+	}
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		m.renderTopHeader(),
+		body,
+		m.renderBottomBar(),
+	)
+}
 
-	// Status color mapping
-	statusColor := map[string]lipgloss.Color{
-		"A": lipgloss.Color("82"),  // Added - Green
-		"M": lipgloss.Color("208"), // Modified - Orange
-		"D": lipgloss.Color("196"), // Deleted - Red
-		"R": lipgloss.Color("63"),  // Renamed - Purple
-		"C": lipgloss.Color("39"),  // Copied - Blue
+func (m Model) renderTopHeader() string {
+	path := "NO_FILE_SELECTED"
+	if m.currentFile != "" {
+		path = strings.ToUpper(m.currentFile)
 	}
 
-	for i, f := range m.files {
-		// Color for status
-		color := statusColor[f.Status]
-		if color == "" {
-			color = lipgloss.Color("250")
-		}
-		statusStyle := lipgloss.NewStyle().Foreground(color)
+	left := topBrandStyle.Render(" CYBERNETIC_MANUSCRIPT ")
+	right := topMetaStyle.Render(" ROOT_USER ")
 
-		// Format: [STATUS] filename (+add/-del)
-		stats := ""
-		if f.Added > 0 || f.Removed > 0 {
-			stats = fmt.Sprintf(" (+%d/-%d)", f.Added, f.Removed)
-		}
-
-		line := statusStyle.Render(f.Status) + " " + f.Name + lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(stats)
-
-		if i == m.cursor {
-			// Highlight selected line
-			line = selectedStyle.Render(fmt.Sprintf("%s %s%s", f.Status, f.Name, stats))
-		}
-		lines = append(lines, line)
+	leftW := lipgloss.Width(left)
+	rightW := lipgloss.Width(right)
+	centerW := m.width - leftW - rightW
+	if centerW < 0 {
+		centerW = 0
 	}
 
-	content := strings.Join(lines, "\n")
-	width := m.getListWidth()
+	displayPath := truncateText(path, max(centerW-2, 0))
+	center := fitWidth(" "+displayPath+" ", centerW)
+
+	return left + topPathStyle.Render(center) + right
+}
+
+func (m Model) renderBottomBar() string {
+	branch := m.options.Target
+	if branch == "" {
+		branch = "HEAD"
+	}
+	left := bottomBarStyle.Render(" BRANCH: " + branch + " ")
+	center := bottomBarStyle.Render(fmt.Sprintf(" FILES: %d ", len(m.files)))
+	right := bottomBarStyle.Render(" [Q]UIT ")
+
+	leftW := lipgloss.Width(left)
+	centerW := lipgloss.Width(center)
+	rightW := lipgloss.Width(right)
+	fillW := m.width - leftW - centerW - rightW
+	if fillW < 0 {
+		fillW = 0
+	}
+
+	fill := bottomBarStyle.Width(fillW).Render("")
+	return left + center + fill + right
+}
+
+func (m Model) renderNavRail() string {
+	width := m.listWidth
 	height := m.getContentHeight()
+	if width <= 0 || height <= 0 {
+		return ""
+	}
 
-	return listStyle.Width(width).Height(height).Render(content)
+	var fileLines []string
+	for i, f := range m.files {
+		row := fmt.Sprintf("[%s] %s", f.Status, strings.ToUpper(f.Name))
+		if i == m.cursor {
+			row = railSelectedStyle.Render(" " + row + " ")
+		} else {
+			row = railFileStyle.Render(" " + row)
+		}
+		fileLines = append(fileLines, row)
+	}
+
+	content := strings.Join([]string{
+		railIdentityStyle.Render(" TERMINAL_UI "),
+		railMetaStyle.Render(" V1.0.0-ALPHA "),
+		"",
+		railSectionStyle.Render(" PROJECT_TREE "),
+		railSectionActiveStyle.Render(" FILES "),
+		strings.Join(fileLines, "\n"),
+		"",
+		railSecondaryStyle.Render(" HISTORY "),
+		railSecondaryStyle.Render(" CONFIG "),
+	}, "\n")
+
+	return railContainerStyle.Width(width).Height(height).Render(content)
+}
+
+func (m Model) renderWorkspace() string {
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		m.renderWorkspaceHeader(),
+		m.renderDiffView(),
+	)
+}
+
+func formatStatCount(n int) string {
+	s := fmt.Sprintf("%d", n)
+	if len(s) <= 3 {
+		return s
+	}
+	var b strings.Builder
+	lead := len(s) % 3
+	if lead == 0 {
+		lead = 3
+	}
+	b.WriteString(s[:lead])
+	for i := lead; i < len(s); i += 3 {
+		b.WriteByte(',')
+		b.WriteString(s[i : i+3])
+	}
+	return b.String()
+}
+
+func (m Model) renderWorkspaceHeader() string {
+	title := "NO_FILE_SELECTED"
+	added := 0
+	removed := 0
+	if m.currentFile != "" {
+		title = strings.ToUpper(m.currentFile)
+	}
+	for _, f := range m.files {
+		if f.Name == m.currentFile {
+			added = f.Added
+			removed = f.Removed
+			break
+		}
+	}
+
+	left := workspaceLabelStyle.Render(" EDITING_FILE: ") + "\n" +
+		workspaceTitleStyle.Render(" "+title)
+	right := workspaceAddStyle.Render("+"+formatStatCount(added)) + " " +
+		workspaceRemoveStyle.Render("-"+formatStatCount(removed))
+
+	diffWidth := m.getDiffWidth()
+	rightWidth := 24
+	if diffWidth < rightWidth {
+		rightWidth = diffWidth
+	}
+	leftWidth := diffWidth - rightWidth
+	if leftWidth < 0 {
+		leftWidth = 0
+	}
+
+	return lipgloss.JoinHorizontal(
+		lipgloss.Bottom,
+		workspaceHeaderStyle.Width(leftWidth).Render(left),
+		workspaceHeaderStyle.Align(lipgloss.Right).Width(rightWidth).Render(right),
+	)
 }
 
 func (m Model) renderDiffView() string {
 	width := m.getDiffWidth()
-	height := m.getContentHeight()
+	height := m.getContentHeight() - m.getWorkspaceHeaderHeight()
+	if height < 0 {
+		height = 0
+	}
 	return diffStyle.Width(width).Height(height).Render(m.diffViewport.View())
-}
-
-func (m Model) renderStatusBar() string {
-	target := m.options.Target
-	if target == "" {
-		target = "HEAD"
-	}
-
-	layout := "H"
-	if m.layout == LayoutVertical {
-		layout = "V"
-	}
-
-	focus := "List"
-	if m.focus == FocusDiff {
-		focus = "Diff"
-	}
-
-	status := fmt.Sprintf("%s > %s | Files: %d | %d/%d | Layout: %s | Focus: %s | [?]help | [q]uit",
-		"current", target, len(m.files), m.cursor+1, len(m.files), layout, focus)
-
-	return statusBarStyle.Width(m.width).Render(status)
 }
 
 func (m Model) renderDiff() string {
@@ -172,7 +308,7 @@ func (m Model) renderDiff() string {
 		contentWidth = 20
 	}
 
-	for _, line := range m.diffLines {
+	for i, line := range m.diffLines {
 		oldNo := ""
 		newNo := ""
 
@@ -197,19 +333,36 @@ func (m Model) renderDiff() string {
 			content = hunkStyle.Render(line.Content)
 			lines = append(lines, lineNo+content)
 		default:
-			// Simple diff highlighting (no syntax highlighting for performance)
-			content = line.Content
-			switch line.Type {
-			case LineAdded:
-				content = addedStyle.Render(content)
-			case LineRemoved:
-				content = removedStyle.Render(content)
+			// Extract prefix character (+/-/ ) and code content
+			prefix := ""
+			codeContent := line.Content
+			if len(line.Content) > 0 {
+				prefix = line.Content[:1]
+				codeContent = line.Content[1:]
 			}
 
-			// Handle word wrap for long lines
-			wrappedLines := wrapLine(content, contentWidth)
-			for i, wrapped := range wrappedLines {
-				if i == 0 {
+			// Enable token-level syntax highlighting
+			var highlightedCode string
+			if m.currentFile != "" && m.highlighter != nil {
+				tokens := m.highlighter.HighlightDiffLine(line.Content, m.currentFile)
+				highlightedCode = m.renderTokens(tokens)
+			} else {
+				highlightedCode = codeContent
+			}
+
+			var bgStyle lipgloss.Style
+			switch line.Type {
+			case LineAdded:
+				bgStyle = addedBgStyle
+			case LineRemoved:
+				bgStyle = removedBgStyle
+			default:
+				bgStyle = lipgloss.NewStyle()
+			}
+			isCurrentLine := i == m.diffCursor
+			wrappedLines := wrapHighlightedLine(prefix, highlightedCode, contentWidth, bgStyle, isCurrentLine)
+			for wIdx, wrapped := range wrappedLines {
+				if wIdx == 0 {
 					lines = append(lines, lineNo+wrapped)
 				} else {
 					// Continuation line with padding instead of line numbers
@@ -223,34 +376,141 @@ func (m Model) renderDiff() string {
 	return strings.Join(lines, "\n")
 }
 
-// wrapLine wraps a line to fit within maxWidth
-func wrapLine(line string, maxWidth int) []string {
+// renderTokens converts syntax-highlighted tokens to a colored string.
+// It skips tokens[0] (the diff prefix character) and returns only the code content.
+func (m Model) renderTokens(tokens []highlight.Token) string {
+	var sb strings.Builder
+	for i, tok := range tokens {
+		if i == 0 {
+			continue // skip the diff prefix (+/-/ )
+		}
+		color := m.highlighter.GetColor(tok.TokenType)
+		if color != "" {
+			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Render(tok.Text))
+		} else {
+			sb.WriteString(tok.Text)
+		}
+	}
+	return sb.String()
+}
+
+// findBreakPoint returns the byte index in s where visible character count reaches maxWidth.
+// It handles ANSI escape sequences correctly by not counting them toward width.
+func findBreakPoint(s string, maxWidth int) int {
+	visibleWidth := 0
+	inEscape := false
+	lastSpaceIdx := -1
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\x1b' {
+			inEscape = true
+		}
+		if inEscape {
+			if s[i] == 'm' {
+				inEscape = false
+			}
+			continue
+		}
+		if s[i] == ' ' {
+			lastSpaceIdx = i
+		}
+		visibleWidth++
+		if visibleWidth >= maxWidth {
+			if lastSpaceIdx > 0 {
+				return lastSpaceIdx
+			}
+			return i + 1
+		}
+	}
+	return len(s)
+}
+
+// wrapHighlightedLine wraps syntax-highlighted content, applying bgStyle to the prefix character.
+func wrapHighlightedLine(prefix, highlightedCode string, maxWidth int, bgStyle lipgloss.Style, isCurrentLine bool) []string {
 	if maxWidth <= 0 {
-		return []string{line}
+		var lineStr string
+		if prefix != "" {
+			if isCurrentLine {
+				lineStr = bgStyle.Render(prefix) + currentLineBg.Render(highlightedCode)
+			} else {
+				lineStr = bgStyle.Render(prefix) + highlightedCode
+			}
+		} else {
+			if isCurrentLine {
+				lineStr = currentLineBg.Render(highlightedCode)
+			} else {
+				lineStr = highlightedCode
+			}
+		}
+		return []string{lineStr}
+	}
+
+	contentWidth := maxWidth
+	if prefix != "" {
+		contentWidth = maxWidth - 1
+	}
+
+	visibleLen := lipgloss.Width(highlightedCode)
+	if visibleLen <= contentWidth {
+		var lineStr string
+		if prefix != "" {
+			if isCurrentLine {
+				lineStr = bgStyle.Render(prefix) + currentLineBg.Render(highlightedCode)
+			} else {
+				lineStr = bgStyle.Render(prefix) + highlightedCode
+			}
+		} else {
+			if isCurrentLine {
+				lineStr = currentLineBg.Render(highlightedCode)
+			} else {
+				lineStr = highlightedCode
+			}
+		}
+		return []string{lineStr}
 	}
 
 	var result []string
-	remaining := line
+	remaining := highlightedCode
+	isFirstLine := true
 
-	for len(remaining) > maxWidth {
-		// Find a good break point
-		breakPoint := maxWidth
-		for breakPoint > 0 && remaining[breakPoint] != ' ' {
-			breakPoint--
-		}
-		if breakPoint == 0 {
-			// No space found, hard break
-			breakPoint = maxWidth
-		}
+	for lipgloss.Width(remaining) > contentWidth {
+		breakPoint := findBreakPoint(remaining, contentWidth)
+		line := remaining[:breakPoint]
+		remaining = strings.TrimLeft(remaining[breakPoint:], " ")
 
-		result = append(result, remaining[:breakPoint])
-		remaining = remaining[breakPoint:]
-		// Trim leading space from remaining
-		remaining = strings.TrimLeft(remaining, " ")
+		var lineStr string
+		if isFirstLine && prefix != "" {
+			if isCurrentLine {
+				lineStr = bgStyle.Render(prefix) + currentLineBg.Render(line)
+			} else {
+				lineStr = bgStyle.Render(prefix) + line
+			}
+			isFirstLine = false
+		} else {
+			if isCurrentLine {
+				lineStr = currentLineBg.Render(line)
+			} else {
+				lineStr = line
+			}
+		}
+		result = append(result, lineStr)
 	}
 
 	if len(remaining) > 0 {
-		result = append(result, remaining)
+		var lineStr string
+		if isFirstLine && prefix != "" {
+			if isCurrentLine {
+				lineStr = bgStyle.Render(prefix) + currentLineBg.Render(remaining)
+			} else {
+				lineStr = bgStyle.Render(prefix) + remaining
+			}
+		} else {
+			if isCurrentLine {
+				lineStr = currentLineBg.Render(remaining)
+			} else {
+				lineStr = remaining
+			}
+		}
+		result = append(result, lineStr)
 	}
 
 	return result
@@ -266,7 +526,6 @@ func (m Model) renderHelp() string {
 		{"j/k or ↑/↓", "Navigate files (list) / Scroll (diff)"},
 		{"Enter", "View diff for selected file"},
 		{"Ctrl+W", "Switch focus between panels"},
-		{"h / H", "Shrink/Grow file list width"},
 		{"L (shift+l)", "Toggle horizontal/vertical layout"},
 		{"g / G", "Go to top/bottom of diff"},
 		{"Ctrl+D / Ctrl+U", "Half page down/up"},
@@ -291,18 +550,7 @@ func (m Model) renderHelp() string {
 
 func (m Model) renderHelpOverlay() string {
 	// Render main view first
-	var content string
-	if m.layout == LayoutHorizontal {
-		listView := m.renderFileList()
-		diffView := m.renderDiffView()
-		content = lipgloss.JoinHorizontal(lipgloss.Top, listView, diffView)
-	} else {
-		listView := m.renderFileList()
-		diffView := m.renderDiffView()
-		content = lipgloss.JoinVertical(lipgloss.Left, listView, diffView)
-	}
-	statusBar := m.renderStatusBar()
-	mainView := lipgloss.JoinVertical(lipgloss.Left, content, statusBar)
+	mainView := m.renderShell()
 
 	// Dim the main view
 	dimmedView := lipgloss.NewStyle().
@@ -322,23 +570,34 @@ func (m Model) renderHelpOverlay() string {
 	) + dimmedView
 }
 
-func (m Model) overlayCenter(background, foreground string) string {
-	// Simple centered overlay using lipgloss.Place
-	return lipgloss.Place(
-		m.width,
-		m.height,
-		lipgloss.Center,
-		lipgloss.Center,
-		foreground,
-		lipgloss.WithWhitespaceChars(" "),
-		lipgloss.WithWhitespaceBackground(lipgloss.Color("0")),
-	)
+func fitWidth(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	s = truncateText(s, width)
+	if pad := width - lipgloss.Width(s); pad > 0 {
+		return s + strings.Repeat(" ", pad)
+	}
+	return s
 }
 
-func getLine(s string, n int) string {
-	lines := strings.Split(s, "\n")
-	if n < len(lines) {
-		return lines[n]
+func truncateText(s string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return ""
 	}
-	return ""
+	if lipgloss.Width(s) <= maxWidth {
+		return s
+	}
+
+	var b strings.Builder
+	width := 0
+	for _, r := range s {
+		rw := lipgloss.Width(string(r))
+		if width+rw > maxWidth {
+			break
+		}
+		b.WriteRune(r)
+		width += rw
+	}
+	return b.String()
 }

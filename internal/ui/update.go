@@ -15,6 +15,7 @@ type loadFilesMsg struct {
 
 // loadDiffMsg is sent when diff is loaded
 type loadDiffMsg struct {
+	file  string
 	lines []DiffLine
 	err   error
 }
@@ -31,7 +32,7 @@ func loadFiles(opts Options) tea.Cmd {
 func loadDiff(opts Options, file string) tea.Cmd {
 	return func() tea.Msg {
 		lines, err := getDiff(opts, file)
-		return loadDiffMsg{lines: lines, err: err}
+		return loadDiffMsg{lines: lines, file: file, err: err}
 	}
 }
 
@@ -52,6 +53,41 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg := msg.(type) {
+	case tea.MouseMsg:
+		// In horizontal layout the list panel occupies columns [0, listWidth).
+		// In vertical layout both panels span the full width, so X-based routing
+		// is not meaningful — treat all wheel events as diff-panel scrolling.
+		inListPanel := m.layout == LayoutHorizontal && msg.X < m.listWidth
+		switch msg.Button {
+		case tea.MouseButtonWheelUp:
+			if inListPanel {
+				if m.cursor > 0 {
+					m.cursor--
+				}
+			} else {
+				if m.diffCursor > 0 {
+					m.diffCursor--
+					if m.diffCursor < m.diffViewport.YOffset {
+						m.diffViewport.YOffset = m.diffCursor
+					}
+				}
+			}
+		case tea.MouseButtonWheelDown:
+			if inListPanel {
+				if m.cursor < len(m.files)-1 {
+					m.cursor++
+				}
+			} else {
+				if len(m.diffLines) > 0 && m.diffCursor < len(m.diffLines)-1 {
+					m.diffCursor++
+					if m.diffCursor >= m.diffViewport.YOffset+m.diffViewport.Height {
+						m.diffViewport.YOffset = m.diffCursor - m.diffViewport.Height + 1
+					}
+				}
+			}
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 
@@ -59,7 +95,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.diffViewport.Width = m.getDiffWidth()
-		m.diffViewport.Height = m.getContentHeight()
+		m.diffViewport.Height = m.getContentHeight() - m.getWorkspaceHeaderHeight()
+		if m.diffViewport.Height < 0 {
+			m.diffViewport.Height = 0
+		}
 		// Re-render diff when window size changes (for word wrap)
 		if len(m.diffLines) > 0 {
 			m.diffViewport.SetContent(m.renderDiff())
@@ -80,6 +119,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case loadDiffMsg:
 		m.loading = false
+		m.currentFile = msg.file
 		if msg.err != nil {
 			m.err = msg.err
 			return m, nil
@@ -138,22 +178,6 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// H/h - decrease/increase file list width (like vim)
-	switch msg.String() {
-	case "h":
-		if m.layout == LayoutHorizontal && m.listWidth > 10 {
-			m.listWidth -= 5
-			m.diffViewport.Width = m.getDiffWidth()
-		}
-		return m, nil
-	case "H":
-		if m.layout == LayoutHorizontal && m.listWidth < m.width/2 {
-			m.listWidth += 5
-			m.diffViewport.Width = m.getDiffWidth()
-		}
-		return m, nil
-	}
-
 	// Shift+L - toggle layout
 	if msg.String() == "L" {
 		if m.layout == LayoutHorizontal {
@@ -163,7 +187,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		// Resize viewport
 		m.diffViewport.Width = m.getDiffWidth()
-		m.diffViewport.Height = m.getContentHeight()
+		m.diffViewport.Height = m.getContentHeight() - m.getWorkspaceHeaderHeight()
+		if m.diffViewport.Height < 0 {
+			m.diffViewport.Height = 0
+		}
 		return m, nil
 	}
 
@@ -203,37 +230,71 @@ func (m Model) handleListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) handleDiffKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "j", "down":
-		m.diffViewport.ScrollDown(1)
+		if len(m.diffLines) > 0 {
+			m.diffCursor = min(m.diffCursor+1, len(m.diffLines)-1)
+		}
+		if m.diffCursor >= m.diffViewport.YOffset+m.diffViewport.Height {
+			m.diffViewport.YOffset = m.diffCursor - m.diffViewport.Height + 1
+		}
+		if m.diffViewport.YOffset < 0 {
+			m.diffViewport.YOffset = 0
+		}
 		return m, nil
 
 	case "k", "up":
-		m.diffViewport.ScrollUp(1)
+		m.diffCursor = max(m.diffCursor-1, 0)
+		if m.diffCursor < m.diffViewport.YOffset {
+			m.diffViewport.YOffset = m.diffCursor
+		}
+		if m.diffViewport.YOffset < 0 {
+			m.diffViewport.YOffset = 0
+		}
 		return m, nil
 
 	case "ctrl+d":
 		m.diffViewport.ScrollDown(m.diffViewport.Height / 2)
+		if len(m.diffLines) > 0 {
+			m.diffCursor = max(m.diffViewport.YOffset, min(m.diffViewport.YOffset+m.diffViewport.Height-1, m.diffCursor))
+			m.diffCursor = max(0, min(len(m.diffLines)-1, m.diffCursor))
+		}
 		return m, nil
 
 	case "ctrl+u":
 		m.diffViewport.ScrollUp(m.diffViewport.Height / 2)
+		if len(m.diffLines) > 0 {
+			m.diffCursor = max(m.diffViewport.YOffset, min(m.diffViewport.YOffset+m.diffViewport.Height-1, m.diffCursor))
+			m.diffCursor = max(0, min(len(m.diffLines)-1, m.diffCursor))
+		}
 		return m, nil
 
 	case "ctrl+f":
 		// Page down (forward)
 		m.diffViewport.ScrollDown(m.diffViewport.Height)
+		if len(m.diffLines) > 0 {
+			m.diffCursor = max(m.diffViewport.YOffset, min(m.diffViewport.YOffset+m.diffViewport.Height-1, m.diffCursor))
+			m.diffCursor = max(0, min(len(m.diffLines)-1, m.diffCursor))
+		}
 		return m, nil
 
 	case "ctrl+b":
 		// Page up (backward)
 		m.diffViewport.ScrollUp(m.diffViewport.Height)
+		if len(m.diffLines) > 0 {
+			m.diffCursor = max(m.diffViewport.YOffset, min(m.diffViewport.YOffset+m.diffViewport.Height-1, m.diffCursor))
+			m.diffCursor = max(0, min(len(m.diffLines)-1, m.diffCursor))
+		}
 		return m, nil
 
 	case "g":
 		m.diffViewport.GotoTop()
+		m.diffCursor = 0
 		return m, nil
 
 	case "G":
 		m.diffViewport.GotoBottom()
+		if len(m.diffLines) > 0 {
+			m.diffCursor = len(m.diffLines) - 1
+		}
 		return m, nil
 
 	case "e":
@@ -254,28 +315,25 @@ func (m Model) handleDiffKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // Helper methods for dimensions
 func (m Model) getListWidth() int {
 	if m.layout == LayoutHorizontal {
-		return min(m.listWidth, m.width/2)
+		return m.listWidth
 	}
 	return m.width
 }
 
 func (m Model) getDiffWidth() int {
 	if m.layout == LayoutHorizontal {
-		return m.width - m.getListWidth() - 1
+		return m.width - m.listWidth
 	}
 	return m.width
 }
 
 func (m Model) getContentHeight() int {
-	// Reserve 1 line for status bar
-	return m.height - 1
+	// Reserve 2 lines for top header and bottom bar
+	return m.height - 2
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
+func (m Model) getWorkspaceHeaderHeight() int {
+	return 3
 }
 
 // openInEditor opens the given file in $EDITOR

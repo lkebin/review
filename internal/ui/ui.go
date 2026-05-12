@@ -14,7 +14,7 @@ type Options struct {
 // Run starts the TUI application
 func Run(opts Options) error {
 	m := NewModel(opts)
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err := p.Run()
 	return err
 }
