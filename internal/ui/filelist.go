@@ -113,12 +113,18 @@ func (fl *FileList) CalcWidth() int {
 }
 
 // Render draws the file list to fit the given width and height.
+// The rightmost character of every row is always the panel separator │,
+// so the dividing line is visible regardless of diff content.
 func (fl *FileList) Render(width, height int, theme Theme) string {
 	if width <= 0 || height <= 0 {
 		return ""
 	}
 
 	fl.ensureVisible(height)
+
+	// contentWidth is the area available before the separator.
+	contentWidth := width - 1
+	sep := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.SepFg)).Render("│")
 
 	var rows []string
 	end := fl.offset + height
@@ -127,27 +133,32 @@ func (fl *FileList) Render(width, height int, theme Theme) string {
 	}
 	for i := fl.offset; i < end; i++ {
 		f := fl.files[i]
-		statusColor := theme.StatusColor(f.Status)
-		badge := lipgloss.NewStyle().
-			Foreground(lipgloss.Color(statusColor)).
-			Bold(true).
-			Render(f.Status)
 
-		name := truncateName(f.Name, width-4) // badge(1) + 3 spaces
-
-		line := fmt.Sprintf(" %s %s", badge, name)
-
+		var content string
 		if i == fl.cursor {
-			line = theme.FileSelectedStyle().Width(width).Render(
-				fmt.Sprintf(" %s %s", f.Status, name))
+			content = theme.FileSelectedStyle().Width(contentWidth).Render(
+				fmt.Sprintf(" %s %s", f.Status, truncateName(f.Name, contentWidth-3)))
+		} else {
+			statusColor := theme.StatusColor(f.Status)
+			badge := lipgloss.NewStyle().
+				Foreground(lipgloss.Color(statusColor)).
+				Bold(true).
+				Render(f.Status)
+			name := truncateName(f.Name, contentWidth-3)
+			raw := fmt.Sprintf(" %s %s", badge, name)
+			// Pad to contentWidth so the separator always sits at a fixed column.
+			if pad := contentWidth - lipgloss.Width(raw); pad > 0 {
+				raw += strings.Repeat(" ", pad)
+			}
+			content = raw
 		}
 
-		rows = append(rows, line)
+		rows = append(rows, content+sep)
 	}
 
-	// Pad remaining height
+	// Pad remaining height — separator must still appear on empty rows.
 	for len(rows) < height {
-		rows = append(rows, strings.Repeat(" ", width))
+		rows = append(rows, strings.Repeat(" ", contentWidth)+sep)
 	}
 
 	return strings.Join(rows, "\n")
