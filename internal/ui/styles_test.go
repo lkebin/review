@@ -14,7 +14,6 @@ func TestDefaultThemeHasAllColors(t *testing.T) {
 		{"AddedCursorBg", th.AddedCursorBg},
 		{"RemovedCursorBg", th.RemovedCursorBg},
 		{"CursorBg", th.CursorBg},
-		{"LineNoBg", th.LineNoBg},
 		{"LineNoFg", th.LineNoFg},
 		{"SepFg", th.SepFg},
 		{"HunkFg", th.HunkFg},

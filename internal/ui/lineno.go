@@ -19,9 +19,9 @@ func CalcLineNoWidth(maxLineNo int) int {
 }
 
 // LineNoColumnWidth returns the total character width of the line number column.
-// Format: "<left> <right> " → digitWidth*2 + 2 (one space separator + one trailing space).
+// Format: " <left> <right> " → digitWidth*2 + 3 (leading space + separator + trailing space).
 func LineNoColumnWidth(digitWidth int) int {
-	return digitWidth*2 + 2
+	return digitWidth*2 + 3
 }
 
 // FormatLineNo formats a line number pair into a fixed-width string.
@@ -41,5 +41,5 @@ func FormatLineNo(left, right, digitWidth int) string {
 	} else {
 		r = blank
 	}
-	return l + " " + r + " "
+	return " " + l + " " + r + " "
 }

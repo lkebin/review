@@ -13,7 +13,6 @@ type Theme struct {
 	InlineAddBg     string
 	InlineDelBg     string
 	LineNoFg        string
-	LineNoBg        string
 	SepFg           string
 	HunkFg          string
 	StatusBarFg     string
@@ -38,9 +37,8 @@ func DefaultTheme() Theme {
 		CursorBg:        "236",
 		InlineAddBg:     "28",
 		InlineDelBg:     "88",
-		LineNoFg:        "240",
-		LineNoBg:        "233",
-		SepFg:           "238",
+		LineNoFg:        "241",
+		SepFg:           "237",
 		HunkFg:          "140",
 		StatusBarFg:     "252",
 		StatusBarBg:     "236",
@@ -74,16 +72,14 @@ func (th Theme) StatusColor(status string) string {
 
 // Convenience lipgloss style builders.
 
+// LineNoStyle returns a style for line number text (foreground only; background is set per-line).
 func (th Theme) LineNoStyle() lipgloss.Style {
-	return lipgloss.NewStyle().
-		Foreground(lipgloss.Color(th.LineNoFg)).
-		Background(lipgloss.Color(th.LineNoBg))
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(th.LineNoFg))
 }
 
+// SepStyle returns a style for the separator character (foreground only; background is set per-line).
 func (th Theme) SepStyle() lipgloss.Style {
-	return lipgloss.NewStyle().
-		Foreground(lipgloss.Color(th.SepFg)).
-		Background(lipgloss.Color(th.LineNoBg))
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(th.SepFg))
 }
 
 func (th Theme) HunkStyle() lipgloss.Style {

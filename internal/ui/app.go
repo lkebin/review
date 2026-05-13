@@ -2,6 +2,8 @@
 package ui
 
 import (
+	"strings"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/kbliu/review/internal/diff"
@@ -42,6 +44,7 @@ type Model struct {
 	focus       FocusType
 	listWidth   int
 	showHelp    bool
+	helpOffset  int
 	loading     bool
 	err         error
 	currentFile string
@@ -137,9 +140,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		// If help is shown, any key closes it
 		if m.showHelp {
-			m.showHelp = false
+			max := m.helpMaxOffset()
+			switch msg.String() {
+			case "j", "down":
+				if m.helpOffset < max {
+					m.helpOffset++
+				}
+			case "k", "up":
+				if m.helpOffset > 0 {
+					m.helpOffset--
+				}
+			case "ctrl+d":
+				m.helpOffset += m.height / 4
+				if m.helpOffset > max {
+					m.helpOffset = max
+				}
+			case "ctrl+u":
+				m.helpOffset -= m.height / 4
+				if m.helpOffset < 0 {
+					m.helpOffset = 0
+				}
+			default:
+				m.showHelp = false
+				m.helpOffset = 0
+			}
 			return m, nil
 		}
 		return m.handleAction(m.keys.HandleKey(msg, m.focus))
@@ -155,6 +180,7 @@ func (m Model) handleAction(action Action) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case ActionHelp:
 		m.showHelp = true
+		m.helpOffset = 0
 		return m, nil
 
 	// Focus
@@ -164,6 +190,13 @@ func (m Model) handleAction(action Action) (tea.Model, tea.Cmd) {
 	case ActionFocusRight:
 		m.focus = FocusDiff
 		return m, nil
+	case ActionFocusToggle:
+		if m.focus == FocusList {
+			m.focus = FocusDiff
+		} else {
+			m.focus = FocusList
+		}
+		return m, nil
 	case ActionEnter:
 		if m.focus == FocusList {
 			m.focus = FocusDiff
@@ -172,7 +205,11 @@ func (m Model) handleAction(action Action) (tea.Model, tea.Cmd) {
 
 	// Panel resize
 	case ActionGrowPanel:
-		if m.listWidth < 60 {
+		maxListWidth := m.width/2
+		if maxListWidth < 10 {
+			maxListWidth = 10
+		}
+		if m.listWidth < maxListWidth {
 			m.listWidth += 2
 			m.resizeComponents()
 		}
@@ -238,10 +275,28 @@ func (m Model) handleAction(action Action) (tea.Model, tea.Cmd) {
 		m.diffView.Viewport().HalfPageUp()
 		return m, nil
 	case ActionPageDown:
-		m.diffView.Viewport().PageDown()
+		if m.focus == FocusList {
+			contentHeight := m.height - 1
+			prevCursor := m.fileList.Cursor()
+			m.fileList.PageDown(contentHeight)
+			if m.fileList.Cursor() != prevCursor {
+				return m, loadDiffCmd(m.opts, m.fileList.SelectedFile().Name)
+			}
+		} else {
+			m.diffView.Viewport().PageDown()
+		}
 		return m, nil
 	case ActionPageUp:
-		m.diffView.Viewport().PageUp()
+		if m.focus == FocusList {
+			contentHeight := m.height - 1
+			prevCursor := m.fileList.Cursor()
+			m.fileList.PageUp(contentHeight)
+			if m.fileList.Cursor() != prevCursor {
+				return m, loadDiffCmd(m.opts, m.fileList.SelectedFile().Name)
+			}
+		} else {
+			m.diffView.Viewport().PageUp()
+		}
 		return m, nil
 	case ActionNextHunk:
 		m.diffView.Viewport().NextHunk()
@@ -307,21 +362,88 @@ func (m Model) View() string {
 	return body + "\n" + bar
 }
 
-func (m Model) renderHelp() string {
-	help := `Keyboard Shortcuts
+func (m Model) helpLines() []string {
+	targetLine := "  target: " + m.opts.Target
+	if m.opts.Staged {
+		targetLine = "  target: --staged (index vs HEAD)"
+	}
+	return strings.Split(`Key Bindings
 
-  j/k          Navigate files / Move cursor in diff
-  Enter        Switch focus to diff view
-  Ctrl+W h/l   Switch focus between panels
-  Ctrl+W >/<   Adjust panel width
-  gg / G       Go to top / bottom
-  Ctrl+D/U     Half page down / up
-  Ctrl+F/B     Page down / up
-  n / N        Next / previous hunk
+  Navigation
+  j / k        Move cursor down / up
+  gg / G       Jump to top / bottom
+  Ctrl+D / U   Half page down / up  (diff only)
+  Ctrl+F / B   Page down / up
+  n / N        Next / previous hunk  (diff only)
+
+  Panels
+  Tab          Toggle focus between panels
+  Enter        Focus diff view
+  > / <        Grow / shrink file list panel
+
+  Other
   ?            Toggle this help
   q            Quit
 
-Press any key to close...`
+Supported targets  (review --help for examples)
+
+  HEAD          working tree vs HEAD (default)
+  HEAD~N        N commits ago
+  <branch>      working tree vs branch
+  <commit>      working tree vs commit
+  a..b          diff between two refs
+  --staged      staged changes
+
+Current session
+`+targetLine, "\n")
+}
+
+func (m Model) helpMaxOffset() int {
+	// Border (2) + padding top/bottom (2) + top indicator (1) + bottom indicator (1)
+	overhead := 6
+	innerHeight := m.height - overhead
+	if innerHeight < 3 {
+		innerHeight = 3
+	}
+	max := len(m.helpLines()) - innerHeight
+	if max < 0 {
+		max = 0
+	}
+	return max
+}
+
+func (m Model) renderHelp() string {
+	lines := m.helpLines()
+	maxOffset := m.helpMaxOffset()
+
+	offset := m.helpOffset
+	if offset > maxOffset {
+		offset = maxOffset
+	}
+
+	overhead := 6
+	innerHeight := m.height - overhead
+	if innerHeight < 3 {
+		innerHeight = 3
+	}
+
+	end := offset + innerHeight
+	if end > len(lines) {
+		end = len(lines)
+	}
+	visible := strings.Join(lines[offset:end], "\n")
+
+	var topIndicator, bottomIndicator string
+	if offset > 0 {
+		topIndicator = "  ▲ j/k to scroll\n"
+	} else {
+		topIndicator = "\n"
+	}
+	if offset < maxOffset {
+		bottomIndicator = "\n  ▼ more"
+	} else {
+		bottomIndicator = "\n\n  Press any key to close"
+	}
 
 	style := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -330,7 +452,7 @@ Press any key to close...`
 
 	return lipgloss.Place(m.width, m.height,
 		lipgloss.Center, lipgloss.Center,
-		style.Render(help))
+		style.Render(topIndicator+visible+bottomIndicator))
 }
 
 // --- Data bridge ---
@@ -349,20 +471,19 @@ func loadFileList(opts Options) ([]FileInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	stats, _ := git.GetFileStats(gopts) // best-effort; missing stats show 0
 	result := make([]FileInfo, len(files))
 	for i, f := range files {
-		content, err := git.GetDiff(gopts, f.Name)
-		if err != nil {
-			result[i] = FileInfo{Status: f.Status, Name: f.Name}
-			continue
+		added, removed := 0, 0
+		if s, ok := stats[f.Name]; ok {
+			added = s[0]
+			removed = s[1]
 		}
-		lines := diff.Parse(content)
-		stats := diff.CalculateStats(lines)
 		result[i] = FileInfo{
 			Status:  f.Status,
 			Name:    f.Name,
-			Added:   stats.Added,
-			Removed: stats.Removed,
+			Added:   added,
+			Removed: removed,
 		}
 	}
 	return result, nil

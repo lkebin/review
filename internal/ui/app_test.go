@@ -34,10 +34,8 @@ func TestActionDispatchFocusSwitch(t *testing.T) {
 	m.files = []FileInfo{{Status: "M", Name: "a.go"}}
 	m.focus = FocusList
 
-	// Ctrl+W then l → focus to diff
-	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlW})
-	m = result.(Model)
-	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+	// Tab → toggle focus to diff
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = result.(Model)
 
 	if m.focus != FocusDiff {

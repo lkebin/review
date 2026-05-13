@@ -206,8 +206,8 @@ func (vp *Viewport) clampOffset() {
 }
 
 // Render returns the visible portion of the viewport as a styled string.
-// Handles content wrapping: if a line exceeds contentWidth, it produces
-// continuation rows with blank line numbers and a "│" marker.
+// Layout per row: │ [line numbers] [content]
+// Handles content wrapping: long lines produce continuation rows with blank left columns.
 func (vp *Viewport) Render(theme Theme, digitWidth int) string {
 	if len(vp.lines) == 0 || vp.height <= 0 || vp.width <= 0 {
 		return ""
@@ -220,9 +220,6 @@ func (vp *Viewport) Render(theme Theme, digitWidth int) string {
 		contentWidth = 1
 	}
 
-	lineNoStyle := theme.LineNoStyle()
-	sepStyle := theme.SepStyle()
-
 	var rows []string
 	displayLines := 0
 
@@ -232,53 +229,64 @@ func (vp *Viewport) Render(theme Theme, digitWidth int) string {
 		line := vp.lines[i]
 		isCursor := i == vp.cursor
 
+		// Determine background — shared by line number and content, NOT the separator.
+		bgColor := vp.lineBackground(line.Type, isCursor, theme)
+
+		// Separator always uses terminal default background so it's a clean visual boundary.
+		sepPart := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.SepFg)).Render("│")
+
+		// Line number style carries the line background color.
+		lineNoSt := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.LineNoFg))
+		if bgColor != "" {
+			lineNoSt = lineNoSt.Background(lipgloss.Color(bgColor))
+		}
+
 		// Format line numbers — hunk headers show "··"
 		var lineNoPart string
 		if line.Type == diff.LineHunkHeader {
 			dots := strings.Repeat("·", digitWidth)
-			lineNoPart = lineNoStyle.Render(dots + " " + dots + " ")
+			lineNoPart = lineNoSt.Render(" " + dots + " " + dots + " ")
 		} else {
 			lineNo := FormatLineNo(line.LeftNo, line.RightNo, digitWidth)
-			lineNoPart = lineNoStyle.Render(lineNo)
+			lineNoPart = lineNoSt.Render(lineNo)
 		}
-		sepPart := sepStyle.Render("│")
-
-		// Determine content background
-		bgColor := vp.lineBackground(line.Type, isCursor, theme)
 
 		// Render the full content line
 		fullContent := vp.renderContent(line, contentWidth, bgColor, theme)
 		visibleLen := lipgloss.Width(fullContent)
 
+		// Blank line-number column for continuation rows: same style as the main line-number
+		// (carries bgColor so removed/added lines keep their background in that area).
+		blankLineNoPart := lineNoSt.Render(strings.Repeat(" ", lineNoWidth))
+
 		if visibleLen <= contentWidth+1 { // +1 for prefix char
-			rows = append(rows, lineNoPart+sepPart+fullContent)
+			// Append reset so unclosed ANSI sequences don't bleed into the next row
+			// (the file list) via the terminal's stateful ANSI parser.
+			rows = append(rows, sepPart+lineNoPart+fullContent+"\x1b[0m")
 			displayLines++
 		} else {
-			// Content wrapping
+			// Content wrapping — continuation rows: sep + blank columns.
 			wrappedRows := wrapRenderedLine(fullContent, contentWidth+1)
-			blankLineNo := lineNoStyle.Render(strings.Repeat(" ", lineNoWidth))
-			contSep := sepStyle.Render("│")
 
 			for wi, wr := range wrappedRows {
 				if displayLines >= vp.height {
 					break
 				}
 				if wi == 0 {
-					rows = append(rows, lineNoPart+sepPart+wr)
+					rows = append(rows, sepPart+lineNoPart+wr+"\x1b[0m")
 				} else {
-					rows = append(rows, blankLineNo+contSep+wr)
+					rows = append(rows, sepPart+blankLineNoPart+wr+"\x1b[0m")
 				}
 				displayLines++
 			}
 		}
 	}
 
-	// Pad remaining height with empty rows
+	// Pad remaining height — separator continues to span the full window height.
 	for displayLines < vp.height {
-		emptyLineNo := lineNoStyle.Render(strings.Repeat(" ", lineNoWidth))
-		emptySep := sepStyle.Render("│")
-		emptyContent := strings.Repeat(" ", contentWidth)
-		rows = append(rows, emptyLineNo+emptySep+emptyContent)
+		sepPart := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.SepFg)).Render("│")
+		emptyContent := strings.Repeat(" ", lineNoWidth+contentWidth)
+		rows = append(rows, sepPart+emptyContent+"\x1b[0m")
 		displayLines++
 	}
 

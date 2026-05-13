@@ -22,6 +22,7 @@ const (
 	ActionPrevHunk
 	ActionFocusLeft
 	ActionFocusRight
+	ActionFocusToggle
 	ActionGrowPanel
 	ActionShrinkPanel
 )
@@ -31,7 +32,6 @@ type keyState int
 
 const (
 	stateNormal keyState = iota
-	stateCtrlW
 	stateG
 )
 
@@ -53,9 +53,6 @@ func (km *KeyMapper) Reset() {
 // HandleKey processes a key event and returns the corresponding Action.
 func (km *KeyMapper) HandleKey(msg tea.KeyMsg, focus FocusType) Action {
 	switch km.state {
-	case stateCtrlW:
-		km.state = stateNormal
-		return km.handleCtrlW(msg)
 	case stateG:
 		km.state = stateNormal
 		if msg.String() == "g" {
@@ -76,18 +73,25 @@ func (km *KeyMapper) handleNormal(msg tea.KeyMsg, focus FocusType) Action {
 		return ActionQuit
 	case "?":
 		return ActionHelp
-	case "ctrl+w":
-		km.state = stateCtrlW
-		return ActionNone
 	case "g":
 		km.state = stateG
 		return ActionNone
 	case "G":
 		return ActionBottom
+	case "tab":
+		return ActionFocusToggle
+	case ">":
+		return ActionGrowPanel
+	case "<":
+		return ActionShrinkPanel
 	case "j", "down":
 		return ActionCursorDown
 	case "k", "up":
 		return ActionCursorUp
+	case "ctrl+f":
+		return ActionPageDown
+	case "ctrl+b":
+		return ActionPageUp
 	}
 
 	// Focus-specific keys
@@ -102,10 +106,6 @@ func (km *KeyMapper) handleNormal(msg tea.KeyMsg, focus FocusType) Action {
 			return ActionHalfPageDown
 		case "ctrl+u":
 			return ActionHalfPageUp
-		case "ctrl+f":
-			return ActionPageDown
-		case "ctrl+b":
-			return ActionPageUp
 		case "n":
 			return ActionNextHunk
 		case "N":
@@ -116,16 +116,3 @@ func (km *KeyMapper) handleNormal(msg tea.KeyMsg, focus FocusType) Action {
 	return ActionNone
 }
 
-func (km *KeyMapper) handleCtrlW(msg tea.KeyMsg) Action {
-	switch msg.String() {
-	case "h", "left":
-		return ActionFocusLeft
-	case "l", "right":
-		return ActionFocusRight
-	case ">":
-		return ActionGrowPanel
-	case "<":
-		return ActionShrinkPanel
-	}
-	return ActionNone
-}

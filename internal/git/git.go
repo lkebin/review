@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -48,22 +49,67 @@ func GetFiles(opts Options) ([]FileInfo, error) {
 
 func parseFileStatus(output string) []FileInfo {
 	var files []FileInfo
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
+	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-
-		parts := strings.SplitN(line, "\t", 2)
-		if len(parts) >= 2 {
-			files = append(files, FileInfo{
-				Status: parts[0],
-				Name:   parts[1],
-			})
+		parts := strings.SplitN(line, "\t", 3)
+		if len(parts) < 2 {
+			continue
 		}
+		status := parts[0]
+		name := parts[1]
+		// Renamed (R<score>) and copied (C<score>) have 3 fields: status, old_path, new_path.
+		// Normalize status to a single letter and use the new path as the canonical name.
+		if len(status) > 1 && (status[0] == 'R' || status[0] == 'C') && len(parts) == 3 {
+			status = string(status[0])
+			name = parts[2]
+		}
+		files = append(files, FileInfo{Status: status, Name: name})
 	}
 	return files
+}
+
+// GetFileStats retrieves added/removed line counts for all changed files in one git call.
+// Returns a map from filename to [2]int{added, removed}. Binary files are omitted.
+func GetFileStats(opts Options) (map[string][2]int, error) {
+	args := []string{"diff", "--numstat"}
+	if opts.Staged {
+		args = append(args, "--cached")
+	} else if opts.Target != "" {
+		args = append(args, opts.Target)
+	}
+
+	cmd := exec.Command("git", args...)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &bytes.Buffer{}
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("git diff --numstat failed: %w", err)
+	}
+	return parseNumstat(out.String()), nil
+}
+
+func parseNumstat(output string) map[string][2]int {
+	result := make(map[string][2]int)
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 3)
+		if len(parts) < 3 {
+			continue
+		}
+		added, err1 := strconv.Atoi(parts[0])
+		removed, err2 := strconv.Atoi(parts[1])
+		if err1 != nil || err2 != nil {
+			continue // binary files show "-"
+		}
+		result[parts[2]] = [2]int{added, removed}
+	}
+	return result
 }
 
 // GetDiff retrieves the diff for a specific file

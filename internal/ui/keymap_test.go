@@ -48,6 +48,12 @@ func TestKeyMapSimpleKeys(t *testing.T) {
 		{"ctrl+u", FocusDiff, ActionHalfPageUp},
 		{"ctrl+f", FocusDiff, ActionPageDown},
 		{"ctrl+b", FocusDiff, ActionPageUp},
+		{"ctrl+f", FocusList, ActionPageDown},
+		{"ctrl+b", FocusList, ActionPageUp},
+		{"tab", FocusList, ActionFocusToggle},
+		{"tab", FocusDiff, ActionFocusToggle},
+		{">", FocusList, ActionGrowPanel},
+		{"<", FocusDiff, ActionShrinkPanel},
 	}
 
 	for _, tc := range cases {
@@ -68,43 +74,32 @@ func focusName(f FocusType) string {
 	return "diff"
 }
 
-func TestKeyMapCtrlWPrefix(t *testing.T) {
+func TestKeyMapFocusSwitch(t *testing.T) {
 	km := NewKeyMapper()
 
-	action := km.HandleKey(key("ctrl+w"), FocusDiff)
-	if action != ActionNone {
-		t.Fatalf("Ctrl+W alone = %v, want ActionNone", action)
-	}
-
-	action = km.HandleKey(key("h"), FocusDiff)
-	if action != ActionFocusLeft {
-		t.Errorf("Ctrl+W h = %v, want ActionFocusLeft", action)
+	action := km.HandleKey(key("tab"), FocusList)
+	if action != ActionFocusToggle {
+		t.Errorf("tab = %v, want ActionFocusToggle", action)
 	}
 
 	km.Reset()
-	action = km.HandleKey(key("ctrl+w"), FocusList)
-	if action != ActionNone {
-		t.Fatalf("Ctrl+W alone = %v, want ActionNone", action)
-	}
-	action = km.HandleKey(key("l"), FocusList)
-	if action != ActionFocusRight {
-		t.Errorf("Ctrl+W l = %v, want ActionFocusRight", action)
+	action = km.HandleKey(key("tab"), FocusDiff)
+	if action != ActionFocusToggle {
+		t.Errorf("tab = %v, want ActionFocusToggle", action)
 	}
 }
 
-func TestKeyMapCtrlWResize(t *testing.T) {
+func TestKeyMapResize(t *testing.T) {
 	km := NewKeyMapper()
 
-	km.HandleKey(key("ctrl+w"), FocusList)
 	action := km.HandleKey(key(">"), FocusList)
 	if action != ActionGrowPanel {
-		t.Errorf("Ctrl+W > = %v, want ActionGrowPanel", action)
+		t.Errorf("> = %v, want ActionGrowPanel", action)
 	}
 
-	km.HandleKey(key("ctrl+w"), FocusList)
 	action = km.HandleKey(key("<"), FocusList)
 	if action != ActionShrinkPanel {
-		t.Errorf("Ctrl+W < = %v, want ActionShrinkPanel", action)
+		t.Errorf("< = %v, want ActionShrinkPanel", action)
 	}
 }
 
@@ -125,12 +120,14 @@ func TestKeyMapGGPrefix(t *testing.T) {
 func TestKeyMapPrefixInvalidFollowUp(t *testing.T) {
 	km := NewKeyMapper()
 
-	km.HandleKey(key("ctrl+w"), FocusDiff)
+	// g followed by non-g should produce ActionNone and reset state
+	km.HandleKey(key("g"), FocusDiff)
 	action := km.HandleKey(key("x"), FocusDiff)
 	if action != ActionNone {
-		t.Errorf("Ctrl+W x = %v, want ActionNone", action)
+		t.Errorf("g x = %v, want ActionNone", action)
 	}
 
+	// Normal keys work after reset
 	action = km.HandleKey(key("j"), FocusDiff)
 	if action != ActionCursorDown {
 		t.Errorf("j after invalid prefix = %v, want ActionCursorDown", action)

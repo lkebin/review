@@ -33,10 +33,10 @@ func TestFormatLineNo(t *testing.T) {
 		width       int
 		want        string
 	}{
-		{12, 15, 4, "  12   15 "},
-		{0, 17, 4, "       17 "},
-		{14, 0, 4, "  14      "},
-		{0, 0, 4, "          "}, // hunk header placeholder
+		{12, 15, 4, "   12   15 "},
+		{0, 17, 4, "        17 "},
+		{14, 0, 4, "   14      "},
+		{0, 0, 4, "           "}, // hunk header placeholder
 	}
 	for _, tc := range cases {
 		got := FormatLineNo(tc.left, tc.right, tc.width)
@@ -48,11 +48,11 @@ func TestFormatLineNo(t *testing.T) {
 }
 
 func TestLineNoColumnWidth(t *testing.T) {
-	// Total column width = digitWidth*2 + 2 (spaces) for the "LLLL RRRR " format
-	if got, want := LineNoColumnWidth(4), 10; got != want {
+	// Total column width = digitWidth*2 + 3 for the " LLLL RRRR " format
+	if got, want := LineNoColumnWidth(4), 11; got != want {
 		t.Errorf("LineNoColumnWidth(4) = %d, want %d", got, want)
 	}
-	if got, want := LineNoColumnWidth(3), 8; got != want {
+	if got, want := LineNoColumnWidth(3), 9; got != want {
 		t.Errorf("LineNoColumnWidth(3) = %d, want %d", got, want)
 	}
 }
