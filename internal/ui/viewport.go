@@ -22,11 +22,12 @@ type ViewLine struct {
 
 // Viewport manages scrollable content with cursor tracking.
 type Viewport struct {
-	width  int
-	height int
-	offset int // first visible logical line
-	cursor int // cursor logical line
-	lines  []ViewLine
+	width       int
+	height      int
+	offset      int // first visible logical line
+	cursor      int // cursor logical line
+	lines       []ViewLine
+	lineNoWidth int // width of the line-number column; kept in sync by DiffView
 }
 
 // NewViewport creates a viewport with the given dimensions.
@@ -167,6 +168,51 @@ func (vp *Viewport) NextHunk() {
 	}
 }
 
+// SearchNext moves cursor to the next line whose content contains query (case-insensitive, wraps around).
+// Returns true if the cursor moved.
+func (vp *Viewport) SearchNext(query string) bool {
+	if query == "" || len(vp.lines) == 0 {
+		return false
+	}
+	q := strings.ToLower(query)
+	for i := 1; i <= len(vp.lines); i++ {
+		idx := (vp.cursor + i) % len(vp.lines)
+		line := vp.lines[idx]
+		if line.Type == diff.LineHunkHeader {
+			continue
+		}
+		if strings.Contains(strings.ToLower(line.RawContent), q) {
+			vp.cursor = idx
+			vp.ensureVisible()
+			return true
+		}
+	}
+	return false
+}
+
+// SearchPrev moves cursor to the previous line whose content contains query (case-insensitive, wraps around).
+// Returns true if the cursor moved.
+func (vp *Viewport) SearchPrev(query string) bool {
+	if query == "" || len(vp.lines) == 0 {
+		return false
+	}
+	q := strings.ToLower(query)
+	n := len(vp.lines)
+	for i := 1; i <= n; i++ {
+		idx := (vp.cursor - i + n) % n
+		line := vp.lines[idx]
+		if line.Type == diff.LineHunkHeader {
+			continue
+		}
+		if strings.Contains(strings.ToLower(line.RawContent), q) {
+			vp.cursor = idx
+			vp.ensureVisible()
+			return true
+		}
+	}
+	return false
+}
+
 // PrevHunk moves cursor to the previous hunk header before current position.
 func (vp *Viewport) PrevHunk() {
 	for i := vp.cursor - 1; i >= 0; i-- {
@@ -178,30 +224,79 @@ func (vp *Viewport) PrevHunk() {
 	}
 }
 
-func (vp *Viewport) ensureVisible() {
-	if vp.cursor < vp.offset {
-		vp.offset = vp.cursor
+// displayRowsFor returns how many terminal rows logical line idx occupies.
+// It counts rune length (prefix + content) and divides by the row capacity,
+// mirroring the wrapping logic in Render without needing ANSI rendering.
+func (vp *Viewport) displayRowsFor(idx int) int {
+	if idx < 0 || idx >= len(vp.lines) {
+		return 1
 	}
-	if vp.height > 0 && vp.cursor >= vp.offset+vp.height {
-		vp.offset = vp.cursor - vp.height + 1
+	line := vp.lines[idx]
+	if line.Type == diff.LineHunkHeader {
+		return 1 // always truncated to width, never wraps
 	}
-	vp.clampOffset()
+	contentW := vp.width - vp.lineNoWidth
+	if contentW < 1 {
+		contentW = 1
+	}
+	rowCap := contentW + 1 // each display row: 1 prefix + contentW content chars
+	runeLen := 1 + len([]rune(line.RawContent))
+	rows := (runeLen + rowCap - 1) / rowCap
+	if rows < 1 {
+		rows = 1
+	}
+	return rows
 }
 
+func (vp *Viewport) ensureVisible() {
+	if len(vp.lines) == 0 || vp.height == 0 {
+		return
+	}
+	// Cursor above the window → scroll up so cursor is at the top.
+	if vp.cursor < vp.offset {
+		vp.offset = vp.cursor
+		if vp.offset < 0 {
+			vp.offset = 0
+		}
+		return
+	}
+	// Count display rows from offset through cursor (inclusive).
+	// Advance offset until cursor's rows fit within the viewport height.
+	total := 0
+	for i := vp.offset; i <= vp.cursor; i++ {
+		total += vp.displayRowsFor(i)
+	}
+	for total > vp.height && vp.offset < vp.cursor {
+		total -= vp.displayRowsFor(vp.offset)
+		vp.offset++
+	}
+	// Do NOT call clampOffset here — its logical-line maxOffset would roll back
+	// the display-row-aware offset we just computed.
+}
+
+// clampOffset prevents the scroll position from going past the last content.
+// It uses display-row counts so that wrapped lines are accounted for correctly.
 func (vp *Viewport) clampOffset() {
+	if vp.offset < 0 {
+		vp.offset = 0
+	}
 	if len(vp.lines) == 0 {
 		vp.offset = 0
 		return
 	}
-	maxOffset := len(vp.lines) - vp.height
-	if maxOffset < 0 {
-		maxOffset = 0
+	// Walk backward from the last line, accumulating display rows until we
+	// reach vp.height. That line index is the maximum valid offset.
+	total := 0
+	maxOffset := 0
+	for i := len(vp.lines) - 1; i >= 0; i-- {
+		total += vp.displayRowsFor(i)
+		if total >= vp.height {
+			maxOffset = i
+			break
+		}
 	}
 	if vp.offset > maxOffset {
 		vp.offset = maxOffset
-	}
-	if vp.offset < 0 {
-		vp.offset = 0
 	}
 }
 
@@ -265,6 +360,15 @@ func (vp *Viewport) Render(theme Theme, digitWidth int) string {
 			for wi, wr := range wrappedRows {
 				if displayLines >= vp.height {
 					break
+				}
+				// Pad each chunk to fill the full content width so the line
+				// background color extends to the right edge of the panel.
+				if wrW := lipgloss.Width(wr); wrW < contentWidth+1 {
+					padSt := lipgloss.NewStyle()
+					if bgColor != "" {
+						padSt = padSt.Background(lipgloss.Color(bgColor))
+					}
+					wr += padSt.Render(strings.Repeat(" ", contentWidth+1-wrW))
 				}
 				if wi == 0 {
 					rows = append(rows, lineNoPart+wr+"\x1b[0m")

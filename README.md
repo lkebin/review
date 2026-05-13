@@ -5,14 +5,14 @@ A terminal-based code review tool written in Go.
 ## Features
 
 - **Split-view interface**: File list on the left, diff content on the right
-- **File statistics**: Shows added/removed lines per file (+add/-del)
-- **Vim-style keybindings**: j/k navigation, efficient shortcuts
+- **File statistics**: Shows added/removed lines per file
 - **Syntax highlighting**: Powered by Chroma for 180+ languages
-- **Line numbers**: Shows both old and new line numbers
-- **Word wrap**: Long lines wrap with continuation indicator
-- **Layout switching**: Toggle between horizontal and vertical split
-- **External editor**: Open files in $EDITOR from the tool
-- **Zero configuration**: Works out of the box
+- **Line numbers**: Shows both old and new line numbers side by side
+- **Inline diff**: Character-level change highlighting within modified lines
+- **Search**: Vim-style `/` search within the focused panel
+- **Hunk navigation**: Jump between diff hunks with `n`/`N`
+- **Adjustable panel width**: Resize the file list with `>` / `<`
+- **Line wrapping**: Long lines wrap and preserve background colors
 
 ## Installation
 
@@ -31,14 +31,18 @@ go build ./cmd/review
 ## Usage
 
 ```bash
-# Review local changes (vs HEAD)
+# Review working tree vs HEAD (default)
 review
 
-# Review changes against a specific branch
+# Review changes against a branch or commit
 review main
+review HEAD~3
 
 # Review staged changes
 review --staged
+
+# Diff between two refs
+review main..feature
 
 # Adjust context lines
 review -U 10 main
@@ -50,65 +54,49 @@ review -U 10 main
 
 | Key | Action |
 |-----|--------|
-| `j` / `↓` | Move down / Scroll down |
-| `k` / `↑` | Move up / Scroll up |
-| `Enter` | View diff for selected file |
+| `j` / `↓` | Move cursor down |
+| `k` / `↑` | Move cursor up |
+| `gg` | Jump to top |
+| `G` | Jump to bottom |
+| `Ctrl+D` / `Ctrl+U` | Half page down / up |
+| `Ctrl+F` / `Ctrl+B` | Page down / up |
 
-### Window Management
-
-| Key | Action |
-|-----|--------|
-| `Ctrl+W` | Switch focus between file list and diff |
-| `h` / `H` | Shrink / Grow file list width |
-| `L` (Shift+l) | Toggle horizontal/vertical layout |
-
-### Diff Navigation
+### Panels
 
 | Key | Action |
 |-----|--------|
-| `g` | Go to top of diff |
-| `G` | Go to bottom of diff |
-| `Ctrl+D` | Half page down |
-| `Ctrl+U` | Half page up |
-| `Ctrl+F` | Page forward (vim style) |
-| `Ctrl+B` | Page backward (vim style) |
+| `Tab` | Toggle focus between file list and diff |
+| `Enter` | Focus diff view |
+| `>` / `<` | Grow / shrink file list panel |
 
-### Actions
+### Search
 
 | Key | Action |
 |-----|--------|
-| `e` | Open current file in $EDITOR |
-| `r` | Refresh file list |
-| `?` | Show help |
+| `/` | Open search (searches focused panel) |
+| `Enter` | Confirm search, jump to first match |
+| `n` / `N` | Next / previous match (or hunk when no search) |
+| `Esc` | Cancel search / clear query |
+
+### Other
+
+| Key | Action |
+|-----|--------|
+| `?` | Toggle help |
 | `q` | Quit |
 
 ## Layout
 
-### Horizontal (default)
 ```
-┌─────────────────┬─────────────────────────────────────┐
-│ A  main.go      │  1   1   package main               │
-│ M  util.go      │  2   2                                │
-│ D  old.go       │  3      -import "fmt"               │
-│ (+5/-3)         │  4      +import "strings"           │
-├─────────────────┴─────────────────────────────────────┤
-│ current > main | Files: 3 | 1/3 | Focus: List | [?]   │
-└───────────────────────────────────────────────────────┘
-```
-
-### Vertical (press `L` to toggle)
-```
-┌───────────────────────────────────────────────────────┐
-│ A  main.go (+5/-3)                                    │
-│ M  util.go (+10/-2)                                   │
-│ D  old.go (+0/-50)                                    │
-├───────────────────────────────────────────────────────┤
-│  1   1   package main                                 │
-│  3      -import "fmt"                                 │
-│  4      +import "strings"                             │
-├───────────────────────────────────────────────────────┤
-│ current > main | Files: 3 | 1/3 | Focus: Diff | [?]   │
-└───────────────────────────────────────────────────────┘
+┌──────────────────┬──────────────────────────────────────┐
+│ M  build.sh      │ 19 21   . get_params.sh && rm ...    │
+│ A  main.go       │ 21      -params=("-gu:gitusername"   │
+│ D  old.go        │ 23      +params=("-gu:gitusername"   │
+│ R  util.go       │ ·· ··  @@ -31,4 +33,10 @@           │
+│                  │ 31 33   if [[ -z "$target" ]]; then  │
+├──────────────────┴──────────────────────────────────────┤
+│ main │ 4 files                       build.sh +11 -3    │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ## Development

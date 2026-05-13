@@ -88,6 +88,41 @@ func (fl *FileList) ensureVisible(height int) {
 	}
 }
 
+// SearchNext moves cursor to the next file whose name contains query (case-insensitive, wraps around).
+// Returns true if the cursor moved.
+func (fl *FileList) SearchNext(query string) bool {
+	if query == "" || len(fl.files) == 0 {
+		return false
+	}
+	q := strings.ToLower(query)
+	for i := 1; i <= len(fl.files); i++ {
+		idx := (fl.cursor + i) % len(fl.files)
+		if strings.Contains(strings.ToLower(fl.files[idx].Name), q) {
+			fl.cursor = idx
+			return true
+		}
+	}
+	return false
+}
+
+// SearchPrev moves cursor to the previous file whose name contains query (case-insensitive, wraps around).
+// Returns true if the cursor moved.
+func (fl *FileList) SearchPrev(query string) bool {
+	if query == "" || len(fl.files) == 0 {
+		return false
+	}
+	q := strings.ToLower(query)
+	n := len(fl.files)
+	for i := 1; i <= n; i++ {
+		idx := (fl.cursor - i + n) % n
+		if strings.Contains(strings.ToLower(fl.files[idx].Name), q) {
+			fl.cursor = idx
+			return true
+		}
+	}
+	return false
+}
+
 // SelectedFile returns the currently selected file.
 func (fl *FileList) SelectedFile() FileInfo {
 	if fl.cursor < len(fl.files) {

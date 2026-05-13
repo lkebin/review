@@ -30,7 +30,8 @@ func (dv *DiffView) DigitWidth() int { return dv.digitWidth }
 // LoadFile parses diff lines, applies syntax highlighting and inline diff,
 // and sets the viewport content.
 func (dv *DiffView) LoadFile(diffLines []diff.Line, filename string, hl *highlight.SimpleHighlighter) {
-	dv.digitWidth = CalcLineNoWidth(CalcMaxLineNo(diffLines))
+	dv.digitWidth = CalcLineNoWidth(calcMaxLineNo(diffLines))
+	dv.viewport.lineNoWidth = LineNoColumnWidth(dv.digitWidth)
 	viewLines := BuildViewLines(diffLines, filename, hl)
 	dv.viewport.SetLines(viewLines)
 }
@@ -45,8 +46,7 @@ func (dv *DiffView) Resize(width, height int) {
 	dv.viewport.Resize(width, height)
 }
 
-// CalcMaxLineNo finds the highest line number across all diff lines.
-func CalcMaxLineNo(lines []diff.Line) int {
+func calcMaxLineNo(lines []diff.Line) int {
 	maxNo := 0
 	for _, l := range lines {
 		if l.OldLineNo > maxNo {

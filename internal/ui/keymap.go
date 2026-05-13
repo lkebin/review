@@ -25,6 +25,7 @@ const (
 	ActionFocusToggle
 	ActionGrowPanel
 	ActionShrinkPanel
+	ActionSearchOpen
 )
 
 // keyState represents the state machine state.
@@ -92,6 +93,12 @@ func (km *KeyMapper) handleNormal(msg tea.KeyMsg, focus FocusType) Action {
 		return ActionPageDown
 	case "ctrl+b":
 		return ActionPageUp
+	case "n":
+		return ActionNextHunk
+	case "N":
+		return ActionPrevHunk
+	case "/":
+		return ActionSearchOpen
 	}
 
 	// Focus-specific keys
@@ -106,10 +113,6 @@ func (km *KeyMapper) handleNormal(msg tea.KeyMsg, focus FocusType) Action {
 			return ActionHalfPageDown
 		case "ctrl+u":
 			return ActionHalfPageUp
-		case "n":
-			return ActionNextHunk
-		case "N":
-			return ActionPrevHunk
 		}
 	}
 

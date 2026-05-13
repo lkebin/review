@@ -221,3 +221,94 @@ func TestViewportRenderEmpty(t *testing.T) {
 		t.Errorf("empty viewport should render empty, got %q", output)
 	}
 }
+
+// cursorVisible returns true if the cursor line is within the display window.
+func cursorVisible(vp *Viewport) bool {
+	if len(vp.lines) == 0 {
+		return true
+	}
+	total := 0
+	for i := vp.offset; i <= vp.cursor; i++ {
+		total += vp.displayRowsFor(i)
+	}
+	return total <= vp.height
+}
+
+// TestViewportCursorVisibleWrapped verifies that the cursor stays on-screen
+// when scrolling through wrapped lines.
+func TestViewportCursorVisibleWrapped(t *testing.T) {
+	// Width=30, lineNoWidth=7 (digitWidth=2 → 2*2+3=7)
+	// contentWidth = 30-7 = 23, rowCap = 24
+	// Lines with 25 content chars: runeLen=26 > 24 → 2 display rows each
+	// height=10 → 5 such lines fit per screen
+	vp := NewViewport(30, 10)
+	vp.lineNoWidth = 7
+
+	lines := make([]ViewLine, 20)
+	for i := range lines {
+		lines[i] = ViewLine{
+			LeftNo: i + 1, RightNo: i + 1,
+			Type:       diff.LineContext,
+			Prefix:     " ",
+			RawContent: strings.Repeat("x", 25),
+		}
+	}
+	vp.SetLines(lines)
+
+	for i := 0; i < 19; i++ {
+		vp.CursorDown()
+		if !cursorVisible(vp) {
+			t.Errorf("CursorDown #%d: cursor %d not visible (offset=%d, height=%d)",
+				i+1, vp.cursor, vp.offset, vp.height)
+		}
+	}
+}
+
+// TestViewportCursorVisibleHalfPage verifies cursor stays visible across half-page jumps
+// when lines wrap.
+func TestViewportCursorVisibleHalfPage(t *testing.T) {
+	vp := NewViewport(30, 10)
+	vp.lineNoWidth = 7
+
+	lines := make([]ViewLine, 30)
+	for i := range lines {
+		lines[i] = ViewLine{
+			LeftNo: i + 1, RightNo: i + 1,
+			Type:       diff.LineContext,
+			Prefix:     " ",
+			RawContent: strings.Repeat("x", 25),
+		}
+	}
+	vp.SetLines(lines)
+
+	for i := 0; i < 10; i++ {
+		vp.HalfPageDown()
+		if !cursorVisible(vp) {
+			t.Errorf("HalfPageDown #%d: cursor %d not visible (offset=%d, height=%d)",
+				i+1, vp.cursor, vp.offset, vp.height)
+		}
+	}
+}
+
+// TestViewportGotoBottomVisible verifies cursor is visible after GotoBottom with wrapped lines.
+func TestViewportGotoBottomVisible(t *testing.T) {
+	vp := NewViewport(30, 10)
+	vp.lineNoWidth = 7
+
+	lines := make([]ViewLine, 20)
+	for i := range lines {
+		lines[i] = ViewLine{
+			LeftNo: i + 1, RightNo: i + 1,
+			Type:       diff.LineContext,
+			Prefix:     " ",
+			RawContent: strings.Repeat("x", 25),
+		}
+	}
+	vp.SetLines(lines)
+	vp.GotoBottom()
+
+	if !cursorVisible(vp) {
+		t.Errorf("GotoBottom: cursor %d not visible (offset=%d, height=%d)",
+			vp.cursor, vp.offset, vp.height)
+	}
+}

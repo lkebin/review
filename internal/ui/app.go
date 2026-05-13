@@ -45,6 +45,8 @@ type Model struct {
 	listWidth   int
 	showHelp    bool
 	helpOffset  int
+	searchMode  bool
+	searchQuery string
 	loading     bool
 	err         error
 	currentFile string
@@ -140,6 +142,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		if m.searchMode {
+			return m.handleSearchKey(msg)
+		}
+		// Esc clears an active (confirmed) search query.
+		if m.searchQuery != "" && msg.String() == "esc" {
+			m.searchQuery = ""
+			return m, nil
+		}
 		if m.showHelp {
 			max := m.helpMaxOffset()
 			switch msg.String() {
@@ -172,6 +182,53 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		m.searchMode = false
+		return m.doSearch(true) // jump to first match
+	case "esc":
+		m.searchMode = false
+		m.searchQuery = ""
+		return m, nil
+	case "backspace", "ctrl+h":
+		if len(m.searchQuery) > 0 {
+			runes := []rune(m.searchQuery)
+			m.searchQuery = string(runes[:len(runes)-1])
+		}
+	default:
+		if msg.Type == tea.KeyRunes {
+			m.searchQuery += string(msg.Runes)
+		}
+	}
+	return m, nil
+}
+
+// doSearch performs a next/prev search jump on the currently focused panel.
+func (m Model) doSearch(forward bool) (tea.Model, tea.Cmd) {
+	if m.searchQuery == "" {
+		return m, nil
+	}
+	if m.focus == FocusList {
+		var moved bool
+		if forward {
+			moved = m.fileList.SearchNext(m.searchQuery)
+		} else {
+			moved = m.fileList.SearchPrev(m.searchQuery)
+		}
+		if moved {
+			return m, loadDiffCmd(m.opts, m.fileList.SelectedFile().Name)
+		}
+	} else {
+		if forward {
+			m.diffView.Viewport().SearchNext(m.searchQuery)
+		} else {
+			m.diffView.Viewport().SearchPrev(m.searchQuery)
+		}
+	}
+	return m, nil
+}
+
 func (m Model) handleAction(action Action) (tea.Model, tea.Cmd) {
 	switch action {
 	case ActionNone:
@@ -181,6 +238,10 @@ func (m Model) handleAction(action Action) (tea.Model, tea.Cmd) {
 	case ActionHelp:
 		m.showHelp = true
 		m.helpOffset = 0
+		return m, nil
+	case ActionSearchOpen:
+		m.searchMode = true
+		m.searchQuery = ""
 		return m, nil
 
 	// Focus
@@ -299,10 +360,20 @@ func (m Model) handleAction(action Action) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case ActionNextHunk:
-		m.diffView.Viewport().NextHunk()
+		if m.searchQuery != "" {
+			return m.doSearch(true)
+		}
+		if m.focus == FocusDiff {
+			m.diffView.Viewport().NextHunk()
+		}
 		return m, nil
 	case ActionPrevHunk:
-		m.diffView.Viewport().PrevHunk()
+		if m.searchQuery != "" {
+			return m.doSearch(false)
+		}
+		if m.focus == FocusDiff {
+			m.diffView.Viewport().PrevHunk()
+		}
 		return m, nil
 	}
 
@@ -351,13 +422,19 @@ func (m Model) View() string {
 	// Compose horizontally
 	body := lipgloss.JoinHorizontal(lipgloss.Top, listView, diffContent)
 
-	// Status bar
-	selected := m.fileList.SelectedFile()
-	bar := RenderStatusBar(
-		m.opts.Target, len(m.files),
-		m.currentFile, selected.Added, selected.Removed,
-		m.width, m.theme,
-	)
+	// Status bar: search bar while typing or while a confirmed query is active;
+	// normal status bar only when there is no query at all.
+	var bar string
+	if m.searchMode || m.searchQuery != "" {
+		bar = RenderSearchBar(m.searchQuery, m.focus, m.width, m.theme, m.searchMode)
+	} else {
+		selected := m.fileList.SelectedFile()
+		bar = RenderStatusBar(
+			m.opts.Target, len(m.files),
+			m.currentFile, selected.Added, selected.Removed,
+			m.width, m.theme,
+		)
+	}
 
 	return body + "\n" + bar
 }
@@ -380,6 +457,12 @@ func (m Model) helpLines() []string {
   Tab          Toggle focus between panels
   Enter        Focus diff view
   > / <        Grow / shrink file list panel
+
+  Search
+  /            Open search (searches current panel)
+  n / N        Next / previous match (falls back to hunk nav in diff)
+  Enter        Confirm search and jump to first match
+  Esc          Cancel search and clear query
 
   Other
   ?            Toggle this help

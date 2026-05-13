@@ -86,7 +86,7 @@ func TestCalcMaxLineNo(t *testing.T) {
 		{OldLineNo: 0, NewLineNo: 200},
 		{OldLineNo: 50, NewLineNo: 0},
 	}
-	got := CalcMaxLineNo(lines)
+	got := calcMaxLineNo(lines)
 	if got != 200 {
 		t.Errorf("CalcMaxLineNo = %d, want 200", got)
 	}

@@ -4,6 +4,8 @@ package ui
 import (
 	"fmt"
 	"strings"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 // RenderStatusBar renders a two-part status bar:
@@ -42,4 +44,30 @@ func RenderStatusBar(branch string, fileCount int, currentFile string, added, re
 
 	fill := strings.Repeat(" ", fillW)
 	return style.Width(width).Render(left + fill + right)
+}
+
+// RenderSearchBar renders the search status bar.
+// When typing is true the input cursor ▌ is shown; when false the query is
+// displayed as a read-only indicator (confirmed search still active).
+// Left: /query[▌]   Right: [files] or [diff]
+func RenderSearchBar(query string, focus FocusType, width int, theme Theme, typing bool) string {
+	if width <= 0 {
+		return ""
+	}
+	panel := "[diff]"
+	if focus == FocusList {
+		panel = "[files]"
+	}
+	cursor := ""
+	if typing {
+		cursor = "▌"
+	}
+	prompt := lipgloss.NewStyle().Bold(true).Render("/") + query + cursor
+	right := " " + panel + " "
+	gap := width - lipgloss.Width(prompt) - len(right)
+	if gap < 0 {
+		gap = 0
+	}
+	bar := prompt + strings.Repeat(" ", gap) + right
+	return theme.StatusBarStyle().Width(width).Render(bar)
 }
