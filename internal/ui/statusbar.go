@@ -61,9 +61,7 @@ func RenderSearchBar(query string, focus FocusType, width int, theme Theme, typi
 	prompt := lipgloss.NewStyle().Bold(true).Render("/") + query
 	right := " " + panel + " "
 	gap := width - lipgloss.Width(prompt) - len(right)
-	if gap < 0 {
-		gap = 0
-	}
+	gap = max(gap, 0)
 	var bar string
 	if typing {
 		// \033[s saves the terminal cursor position immediately after the query,
