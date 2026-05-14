@@ -88,3 +88,42 @@ func TestHelpToggle(t *testing.T) {
 		t.Error("? again should toggle help off")
 	}
 }
+
+func TestSearchOpenShowsCursor(t *testing.T) {
+	m := NewModel(Options{Target: "HEAD"})
+	m.loading = false
+	m.files = []FileInfo{{Status: "M", Name: "a.go"}}
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	if cmd == nil {
+		t.Error("/ key should produce ShowCursor command")
+	}
+}
+
+func TestSearchEnterHidesCursor(t *testing.T) {
+	m := NewModel(Options{Target: "HEAD"})
+	m.loading = false
+	m.searchMode = true
+	m.searchQuery = "" // empty query so doSearch returns nil cmd
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Error("Enter in search mode should produce HideCursor command")
+	}
+}
+
+func TestSearchEscHidesCursor(t *testing.T) {
+	m := NewModel(Options{Target: "HEAD"})
+	m.loading = false
+	m.searchMode = true
+	m.searchQuery = "foo"
+
+	result, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = result.(Model)
+	if m.searchMode {
+		t.Error("Esc should exit search mode")
+	}
+	if cmd == nil {
+		t.Error("Esc in search mode should produce HideCursor command")
+	}
+}
