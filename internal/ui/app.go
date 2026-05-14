@@ -186,12 +186,11 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		m.searchMode = false
-		model, cmd := m.doSearch(true)
-		return model, tea.Batch(tea.HideCursor, cmd)
+		return m.doSearch(true) // jump to first match
 	case "esc":
 		m.searchMode = false
 		m.searchQuery = ""
-		return m, tea.HideCursor
+		return m, nil
 	case "backspace", "ctrl+h":
 		if len(m.searchQuery) > 0 {
 			runes := []rune(m.searchQuery)
@@ -200,6 +199,8 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	default:
 		if msg.Type == tea.KeyRunes {
 			m.searchQuery += string(msg.Runes)
+		} else if msg.Type == tea.KeySpace {
+			m.searchQuery += " "
 		}
 	}
 	return m, nil
@@ -243,7 +244,7 @@ func (m Model) handleAction(action Action) (tea.Model, tea.Cmd) {
 	case ActionSearchOpen:
 		m.searchMode = true
 		m.searchQuery = ""
-		return m, tea.ShowCursor
+		return m, nil
 
 	// Focus
 	case ActionFocusLeft:

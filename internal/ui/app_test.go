@@ -89,41 +89,15 @@ func TestHelpToggle(t *testing.T) {
 	}
 }
 
-func TestSearchOpenShowsCursor(t *testing.T) {
-	m := NewModel(Options{Target: "HEAD"})
-	m.loading = false
-	m.files = []FileInfo{{Status: "M", Name: "a.go"}}
-
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
-	if cmd == nil {
-		t.Error("/ key should produce ShowCursor command")
-	}
-}
-
-func TestSearchEnterHidesCursor(t *testing.T) {
+func TestSearchSpaceInput(t *testing.T) {
 	m := NewModel(Options{Target: "HEAD"})
 	m.loading = false
 	m.searchMode = true
-	m.searchQuery = "" // empty query so doSearch returns nil cmd
+	m.searchQuery = "hello"
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if cmd == nil {
-		t.Error("Enter in search mode should produce HideCursor command")
-	}
-}
-
-func TestSearchEscHidesCursor(t *testing.T) {
-	m := NewModel(Options{Target: "HEAD"})
-	m.loading = false
-	m.searchMode = true
-	m.searchQuery = "foo"
-
-	result, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
 	m = result.(Model)
-	if m.searchMode {
-		t.Error("Esc should exit search mode")
-	}
-	if cmd == nil {
-		t.Error("Esc in search mode should produce HideCursor command")
+	if m.searchQuery != "hello " {
+		t.Errorf("space key: searchQuery = %q, want %q", m.searchQuery, "hello ")
 	}
 }

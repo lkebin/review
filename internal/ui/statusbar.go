@@ -47,9 +47,9 @@ func RenderStatusBar(branch string, fileCount int, currentFile string, added, re
 }
 
 // RenderSearchBar renders the search status bar.
-// When typing is true the terminal cursor is positioned after the query using ANSI
-// save/restore sequences; when false the query is displayed as a read-only indicator.
-// Left: /query   Right: [files] or [diff]
+// When typing is true the input cursor ▌ is shown; when false the query is
+// displayed as a read-only indicator (confirmed search still active).
+// Left: /query[▌]   Right: [files] or [diff]
 func RenderSearchBar(query string, focus FocusType, width int, theme Theme, typing bool) string {
 	if width <= 0 {
 		return ""
@@ -58,30 +58,14 @@ func RenderSearchBar(query string, focus FocusType, width int, theme Theme, typi
 	if focus == FocusList {
 		panel = "[files]"
 	}
-	prompt := lipgloss.NewStyle().Bold(true).Render("/") + query
+	cursor := ""
+	if typing {
+		cursor = "▌"
+	}
+	prompt := lipgloss.NewStyle().Bold(true).Render("/") + query + cursor
 	right := " " + panel + " "
 	gap := width - lipgloss.Width(prompt) - len(right)
 	gap = max(gap, 0)
-	var bar string
-	if typing {
-		// \033[s saves the terminal cursor position immediately after the query,
-		// and \033[u restores it once the full line has been written, so the
-		// real terminal cursor parks at the end of the query rather than at the
-		// line end.
-		//
-		// Safety: passing these sequences through lipgloss.Style.Render() is safe
-		// here because lipgloss only prepends/appends its own SGR colour codes —
-		// it does not strip, reorder, or reflow embedded ANSI sequences.
-		// Additionally, because `gap` is calculated so that
-		//   lipgloss.Width(prompt) + gap + len(right) == width
-		// the bar already fills exactly `width` visual characters, so lipgloss
-		// adds no padding of its own and no reflow occurs at all.
-		//
-		// Portability: \033[s / \033[u (DECSC/DECRC) are supported by all
-		// mainstream terminals: xterm, iTerm2, kitty, alacritty, tmux.
-		bar = prompt + "\033[s" + strings.Repeat(" ", gap) + right + "\033[u"
-	} else {
-		bar = prompt + strings.Repeat(" ", gap) + right
-	}
+	bar := prompt + strings.Repeat(" ", gap) + right
 	return theme.StatusBarStyle().Width(width).Render(bar)
 }

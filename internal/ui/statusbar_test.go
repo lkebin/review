@@ -45,25 +45,16 @@ func TestRenderStatusBarNarrow(t *testing.T) {
 func TestRenderSearchBarTypingCursor(t *testing.T) {
 	th := DefaultTheme()
 
-	// typing=true: no ▌, but ANSI save/restore present
+	// typing=true: ▌ cursor shown
 	bar := RenderSearchBar("foo", FocusList, 80, th, true)
-	if strings.Contains(bar, "▌") {
-		t.Error("typing=true: bar must not contain fake cursor ▌")
-	}
-	if !strings.Contains(bar, "\033[s") {
-		t.Error("typing=true: bar must contain ANSI save cursor \\033[s")
-	}
-	if !strings.Contains(bar, "\033[u") {
-		t.Error("typing=true: bar must contain ANSI restore cursor \\033[u")
+	if !strings.Contains(bar, "▌") {
+		t.Error("typing=true: bar must contain cursor ▌")
 	}
 
-	// typing=false: no cursor character or ANSI sequences
+	// typing=false: no cursor
 	bar2 := RenderSearchBar("foo", FocusList, 80, th, false)
 	if strings.Contains(bar2, "▌") {
 		t.Error("typing=false: bar must not contain ▌")
-	}
-	if strings.Contains(bar2, "\033[s") {
-		t.Error("typing=false: bar must not contain ANSI save cursor")
 	}
 }
 
@@ -74,11 +65,6 @@ func TestRenderSearchBarWidthWithCursor(t *testing.T) {
 		got := lipgloss.Width(bar)
 		if got != w {
 			t.Errorf("width %d: search bar visual width = %d, want %d", w, got, w)
-		}
-		sIdx := strings.Index(bar, "\033[s")
-		uIdx := strings.Index(bar, "\033[u")
-		if sIdx < 0 || uIdx < 0 || sIdx >= uIdx {
-			t.Errorf("width %d: \\033[s must appear before \\033[u", w)
 		}
 	}
 }
