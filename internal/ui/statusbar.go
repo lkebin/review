@@ -47,9 +47,9 @@ func RenderStatusBar(branch string, fileCount int, currentFile string, added, re
 }
 
 // RenderSearchBar renders the search status bar.
-// When typing is true the input cursor ▌ is shown; when false the query is
-// displayed as a read-only indicator (confirmed search still active).
-// Left: /query[▌]   Right: [files] or [diff]
+// When typing is true the terminal cursor is positioned after the query using ANSI
+// save/restore sequences; when false the query is displayed as a read-only indicator.
+// Left: /query   Right: [files] or [diff]
 func RenderSearchBar(query string, focus FocusType, width int, theme Theme, typing bool) string {
 	if width <= 0 {
 		return ""
@@ -58,16 +58,20 @@ func RenderSearchBar(query string, focus FocusType, width int, theme Theme, typi
 	if focus == FocusList {
 		panel = "[files]"
 	}
-	cursor := ""
-	if typing {
-		cursor = "▌"
-	}
-	prompt := lipgloss.NewStyle().Bold(true).Render("/") + query + cursor
+	prompt := lipgloss.NewStyle().Bold(true).Render("/") + query
 	right := " " + panel + " "
 	gap := width - lipgloss.Width(prompt) - len(right)
 	if gap < 0 {
 		gap = 0
 	}
-	bar := prompt + strings.Repeat(" ", gap) + right
+	var bar string
+	if typing {
+		// \033[s saves the terminal cursor position (end of query).
+		// \033[u restores it after rendering the rest of the line, so the
+		// real terminal cursor parks here instead of at the line end.
+		bar = prompt + "\033[s" + strings.Repeat(" ", gap) + right + "\033[u"
+	} else {
+		bar = prompt + strings.Repeat(" ", gap) + right
+	}
 	return theme.StatusBarStyle().Width(width).Render(bar)
 }
