@@ -75,5 +75,10 @@ func TestRenderSearchBarWidthWithCursor(t *testing.T) {
 		if got != w {
 			t.Errorf("width %d: search bar visual width = %d, want %d", w, got, w)
 		}
+		sIdx := strings.Index(bar, "\033[s")
+		uIdx := strings.Index(bar, "\033[u")
+		if sIdx < 0 || uIdx < 0 || sIdx >= uIdx {
+			t.Errorf("width %d: \\033[s must appear before \\033[u", w)
+		}
 	}
 }

@@ -66,9 +66,21 @@ func RenderSearchBar(query string, focus FocusType, width int, theme Theme, typi
 	}
 	var bar string
 	if typing {
-		// \033[s saves the terminal cursor position (end of query).
-		// \033[u restores it after rendering the rest of the line, so the
-		// real terminal cursor parks here instead of at the line end.
+		// \033[s saves the terminal cursor position immediately after the query,
+		// and \033[u restores it once the full line has been written, so the
+		// real terminal cursor parks at the end of the query rather than at the
+		// line end.
+		//
+		// Safety: passing these sequences through lipgloss.Style.Render() is safe
+		// here because lipgloss only prepends/appends its own SGR colour codes —
+		// it does not strip, reorder, or reflow embedded ANSI sequences.
+		// Additionally, because `gap` is calculated so that
+		//   lipgloss.Width(prompt) + gap + len(right) == width
+		// the bar already fills exactly `width` visual characters, so lipgloss
+		// adds no padding of its own and no reflow occurs at all.
+		//
+		// Portability: \033[s / \033[u (DECSC/DECRC) are supported by all
+		// mainstream terminals: xterm, iTerm2, kitty, alacritty, tmux.
 		bar = prompt + "\033[s" + strings.Repeat(" ", gap) + right + "\033[u"
 	} else {
 		bar = prompt + strings.Repeat(" ", gap) + right
