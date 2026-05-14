@@ -267,10 +267,7 @@ func (m Model) handleAction(action Action) (tea.Model, tea.Cmd) {
 
 	// Panel resize
 	case ActionGrowPanel:
-		maxListWidth := m.width/2
-		if maxListWidth < 10 {
-			maxListWidth = 10
-		}
+		maxListWidth := max(m.width/2, 10)
 		if m.listWidth < maxListWidth {
 			m.listWidth += 2
 			m.resizeComponents()
@@ -382,14 +379,8 @@ func (m Model) handleAction(action Action) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) resizeComponents() {
-	contentHeight := m.height - 1 // 1 for status bar
-	if contentHeight < 0 {
-		contentHeight = 0
-	}
-	diffWidth := m.width - m.listWidth
-	if diffWidth < 1 {
-		diffWidth = 1
-	}
+	contentHeight := max(m.height-1, 0) // 1 for status bar
+	diffWidth := max(m.width-m.listWidth, 1)
 	m.diffView.Resize(diffWidth, contentHeight)
 }
 
@@ -409,10 +400,7 @@ func (m Model) View() string {
 		return m.renderHelp()
 	}
 
-	contentHeight := m.height - 1
-	if contentHeight < 0 {
-		contentHeight = 0
-	}
+	contentHeight := max(m.height-1, 0)
 
 	// File list
 	listView := m.fileList.Render(m.listWidth, contentHeight, m.theme)
@@ -485,36 +473,18 @@ Current session
 func (m Model) helpMaxOffset() int {
 	// Border (2) + padding top/bottom (2) + top indicator (1) + bottom indicator (1)
 	overhead := 6
-	innerHeight := m.height - overhead
-	if innerHeight < 3 {
-		innerHeight = 3
-	}
-	max := len(m.helpLines()) - innerHeight
-	if max < 0 {
-		max = 0
-	}
-	return max
+	innerHeight := max(m.height-overhead, 3)
+	return max(len(m.helpLines())-innerHeight, 0)
 }
 
 func (m Model) renderHelp() string {
 	lines := m.helpLines()
 	maxOffset := m.helpMaxOffset()
 
-	offset := m.helpOffset
-	if offset > maxOffset {
-		offset = maxOffset
-	}
-
+	offset := min(m.helpOffset, maxOffset)
 	overhead := 6
-	innerHeight := m.height - overhead
-	if innerHeight < 3 {
-		innerHeight = 3
-	}
-
-	end := offset + innerHeight
-	if end > len(lines) {
-		end = len(lines)
-	}
+	innerHeight := max(m.height-overhead, 3)
+	end := min(offset+innerHeight, len(lines))
 	visible := strings.Join(lines[offset:end], "\n")
 
 	var topIndicator, bottomIndicator string
