@@ -58,11 +58,7 @@ func RenderSearchBar(query string, focus FocusType, width int, theme Theme, typi
 	if focus == FocusList {
 		panel = "[files]"
 	}
-	cursor := ""
-	if typing {
-		cursor = "▌"
-	}
-	prompt := lipgloss.NewStyle().Bold(true).Render("/") + query + cursor
+	prompt := lipgloss.NewStyle().Bold(true).Render("/") + query
 	right := " " + panel + " "
 	gap := width - lipgloss.Width(prompt) - len(right)
 	gap = max(gap, 0)

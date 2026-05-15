@@ -45,13 +45,13 @@ func TestRenderStatusBarNarrow(t *testing.T) {
 func TestRenderSearchBarTypingCursor(t *testing.T) {
 	th := DefaultTheme()
 
-	// typing=true: ▌ cursor shown
+	// The real terminal cursor is used instead of a fake ▌ — neither state
+	// should contain the block cursor character.
 	bar := RenderSearchBar("foo", FocusList, 80, th, true)
-	if !strings.Contains(bar, "▌") {
-		t.Error("typing=true: bar must contain cursor ▌")
+	if strings.Contains(bar, "▌") {
+		t.Error("typing=true: bar must not contain fake cursor ▌")
 	}
 
-	// typing=false: no cursor
 	bar2 := RenderSearchBar("foo", FocusList, 80, th, false)
 	if strings.Contains(bar2, "▌") {
 		t.Error("typing=false: bar must not contain ▌")

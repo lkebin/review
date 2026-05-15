@@ -39,6 +39,9 @@ type Model struct {
 	fileList *FileList
 	diffView *DiffView
 
+	// Cursor positioner for search mode (nil in tests)
+	cursorPos *cursorPositioner
+
 	// State
 	files       []FileInfo
 	focus       FocusType
@@ -186,24 +189,34 @@ func (m Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "enter":
 		m.searchMode = false
-		return m.doSearch(true) // jump to first match
+		m.cursorPos.clearCol()
+		model, cmd := m.doSearch(true) // jump to first match
+		return model, tea.Batch(tea.HideCursor, cmd)
 	case "esc":
 		m.searchMode = false
 		m.searchQuery = ""
-		return m, nil
+		m.cursorPos.clearCol()
+		return m, tea.HideCursor
 	case "backspace", "ctrl+h":
 		if len(m.searchQuery) > 0 {
 			runes := []rune(m.searchQuery)
 			m.searchQuery = string(runes[:len(runes)-1])
 		}
+		m.cursorPos.setCol(searchPromptCol(m.searchQuery))
 	default:
 		if msg.Type == tea.KeyRunes {
 			m.searchQuery += string(msg.Runes)
 		} else if msg.Type == tea.KeySpace {
 			m.searchQuery += " "
 		}
+		m.cursorPos.setCol(searchPromptCol(m.searchQuery))
 	}
 	return m, nil
+}
+
+// searchPromptCol returns the 1-indexed terminal column immediately after "/query".
+func searchPromptCol(query string) int32 {
+	return int32(2 + lipgloss.Width(query))
 }
 
 // doSearch performs a next/prev search jump on the currently focused panel.
@@ -244,7 +257,8 @@ func (m Model) handleAction(action Action) (tea.Model, tea.Cmd) {
 	case ActionSearchOpen:
 		m.searchMode = true
 		m.searchQuery = ""
-		return m, nil
+		m.cursorPos.setCol(searchPromptCol(""))
+		return m, tea.ShowCursor
 
 	// Focus
 	case ActionFocusLeft:

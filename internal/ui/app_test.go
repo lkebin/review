@@ -89,6 +89,77 @@ func TestHelpToggle(t *testing.T) {
 	}
 }
 
+func TestCursorPositionerSearchOpen(t *testing.T) {
+	cp := &cursorPositioner{}
+	m := NewModel(Options{Target: "HEAD"})
+	m.loading = false
+	m.files = []FileInfo{{Status: "M", Name: "a.go"}}
+	m.cursorPos = cp
+
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	if cp.col.Load() == 0 {
+		t.Error("opening search should set a non-zero cursor column")
+	}
+}
+
+func TestCursorPositionerSearchClose(t *testing.T) {
+	cp := &cursorPositioner{}
+	m := NewModel(Options{Target: "HEAD"})
+	m.loading = false
+	m.searchMode = true
+	m.searchQuery = "foo"
+	m.cursorPos = cp
+	cp.setCol(5)
+
+	// Enter should clear the column
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cp.col.Load() != 0 {
+		t.Error("enter in search mode should clear cursor column")
+	}
+
+	// Reset, then Esc should also clear
+	cp.setCol(5)
+	m2 := NewModel(Options{Target: "HEAD"})
+	m2.loading = false
+	m2.searchMode = true
+	m2.searchQuery = "foo"
+	m2.cursorPos = cp
+	m2.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cp.col.Load() != 0 {
+		t.Error("esc in search mode should clear cursor column")
+	}
+}
+
+func TestCursorPositionerTypingUpdatesCol(t *testing.T) {
+	cp := &cursorPositioner{}
+	m := NewModel(Options{Target: "HEAD"})
+	m.loading = false
+	m.searchMode = true
+	m.searchQuery = ""
+	m.cursorPos = cp
+
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	m = result.(Model)
+	colAfterA := cp.col.Load()
+	if colAfterA == 0 {
+		t.Error("typing in search mode should set cursor column")
+	}
+
+	result, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	m = result.(Model)
+	colAfterAB := cp.col.Load()
+	if colAfterAB <= colAfterA {
+		t.Errorf("typing more chars should increase cursor column: got %d after 'a', %d after 'ab'", colAfterA, colAfterAB)
+	}
+
+	// Backspace should decrease column
+	m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	colAfterBackspace := cp.col.Load()
+	if colAfterBackspace >= colAfterAB {
+		t.Errorf("backspace should decrease cursor column: got %d after 'ab', %d after backspace", colAfterAB, colAfterBackspace)
+	}
+}
+
 func TestSearchSpaceInput(t *testing.T) {
 	m := NewModel(Options{Target: "HEAD"})
 	m.loading = false

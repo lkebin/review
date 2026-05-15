@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"os"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -13,8 +15,10 @@ type Options struct {
 
 // Run starts the TUI application
 func Run(opts Options) error {
+	cp := &cursorPositioner{inner: os.Stdout}
 	m := NewModel(opts)
-	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	m.cursorPos = cp
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithOutput(cp))
 	_, err := p.Run()
 	return err
 }
