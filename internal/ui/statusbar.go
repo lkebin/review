@@ -46,22 +46,15 @@ func RenderStatusBar(branch string, fileCount int, currentFile string, added, re
 	return style.Width(width).Render(left + fill + right)
 }
 
-// RenderSearchBar renders the search status bar.
-// When typing is true the input cursor ▌ is shown; when false the query is
-// displayed as a read-only indicator (confirmed search still active).
-// Left: /query[▌]   Right: [files] or [diff]
-func RenderSearchBar(query string, focus FocusType, width int, theme Theme, typing bool) string {
+// RenderCmdLine renders the vim-style command line (bottom row).
+// Shows "/query" while a search is active; otherwise blank.
+func RenderCmdLine(query string, width int, typing bool) string {
 	if width <= 0 {
 		return ""
 	}
-	panel := "[diff]"
-	if focus == FocusList {
-		panel = "[files]"
+	if !typing && query == "" {
+		return lipgloss.NewStyle().Width(width).Render("")
 	}
 	prompt := lipgloss.NewStyle().Bold(true).Render("/") + query
-	right := " " + panel + " "
-	gap := width - lipgloss.Width(prompt) - len(right)
-	gap = max(gap, 0)
-	bar := prompt + strings.Repeat(" ", gap) + right
-	return theme.StatusBarStyle().Width(width).Render(bar)
+	return lipgloss.NewStyle().Width(width).Render(prompt)
 }

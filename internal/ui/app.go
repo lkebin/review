@@ -350,7 +350,7 @@ func (m Model) handleAction(action Action) (tea.Model, tea.Cmd) {
 		return m, nil
 	case ActionPageDown:
 		if m.focus == FocusList {
-			contentHeight := m.height - 1
+			contentHeight := m.height - 2
 			prevCursor := m.fileList.Cursor()
 			m.fileList.PageDown(contentHeight)
 			if m.fileList.Cursor() != prevCursor {
@@ -362,7 +362,7 @@ func (m Model) handleAction(action Action) (tea.Model, tea.Cmd) {
 		return m, nil
 	case ActionPageUp:
 		if m.focus == FocusList {
-			contentHeight := m.height - 1
+			contentHeight := m.height - 2
 			prevCursor := m.fileList.Cursor()
 			m.fileList.PageUp(contentHeight)
 			if m.fileList.Cursor() != prevCursor {
@@ -394,7 +394,7 @@ func (m Model) handleAction(action Action) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) resizeComponents() {
-	contentHeight := max(m.height-1, 0) // 1 for status bar
+	contentHeight := max(m.height-2, 0) // status bar + command line
 	diffWidth := max(m.width-m.listWidth, 1)
 	m.diffView.Resize(diffWidth, contentHeight)
 }
@@ -415,7 +415,7 @@ func (m Model) View() string {
 		return m.renderHelp()
 	}
 
-	contentHeight := max(m.height-1, 0)
+	contentHeight := max(m.height-2, 0)
 
 	// File list
 	listView := m.fileList.Render(m.listWidth, contentHeight, m.theme)
@@ -426,21 +426,18 @@ func (m Model) View() string {
 	// Compose horizontally
 	body := lipgloss.JoinHorizontal(lipgloss.Top, listView, diffContent)
 
-	// Status bar: search bar while typing or while a confirmed query is active;
-	// normal status bar only when there is no query at all.
-	var bar string
-	if m.searchMode || m.searchQuery != "" {
-		bar = RenderSearchBar(m.searchQuery, m.focus, m.width, m.theme, m.searchMode)
-	} else {
-		selected := m.fileList.SelectedFile()
-		bar = RenderStatusBar(
-			m.opts.Target, len(m.files),
-			m.currentFile, selected.Added, selected.Removed,
-			m.width, m.theme,
-		)
-	}
+	// Status bar: always shows branch / file info
+	selected := m.fileList.SelectedFile()
+	statusBar := RenderStatusBar(
+		m.opts.Target, len(m.files),
+		m.currentFile, selected.Added, selected.Removed,
+		m.width, m.theme,
+	)
 
-	return body + "\n" + bar
+	// Command line: search input or blank
+	cmdLine := RenderCmdLine(m.searchQuery, m.width, m.searchMode)
+
+	return body + "\n" + statusBar + "\n" + cmdLine
 }
 
 func (m Model) helpLines() []string {

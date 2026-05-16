@@ -42,29 +42,39 @@ func TestRenderStatusBarNarrow(t *testing.T) {
 	}
 }
 
-func TestRenderSearchBarTypingCursor(t *testing.T) {
-	th := DefaultTheme()
-
-	// The real terminal cursor is used instead of a fake ▌ — neither state
-	// should contain the block cursor character.
-	bar := RenderSearchBar("foo", FocusList, 80, th, true)
+func TestRenderCmdLineNoCursor(t *testing.T) {
+	// Neither typing nor confirmed state should show the fake block cursor.
+	bar := RenderCmdLine("foo", 80, true)
 	if strings.Contains(bar, "▌") {
-		t.Error("typing=true: bar must not contain fake cursor ▌")
+		t.Error("typing=true: cmd line must not contain fake cursor ▌")
 	}
 
-	bar2 := RenderSearchBar("foo", FocusList, 80, th, false)
+	bar2 := RenderCmdLine("foo", 80, false)
 	if strings.Contains(bar2, "▌") {
-		t.Error("typing=false: bar must not contain ▌")
+		t.Error("typing=false: cmd line must not contain ▌")
 	}
 }
 
-func TestRenderSearchBarWidthWithCursor(t *testing.T) {
-	th := DefaultTheme()
+func TestRenderCmdLineWidth(t *testing.T) {
 	for _, w := range []int{40, 80, 120} {
-		bar := RenderSearchBar("foo", FocusList, w, th, true)
+		bar := RenderCmdLine("foo", w, true)
 		got := lipgloss.Width(bar)
 		if got != w {
-			t.Errorf("width %d: search bar visual width = %d, want %d", w, got, w)
+			t.Errorf("width %d: cmd line visual width = %d, want %d", w, got, w)
 		}
+	}
+}
+
+func TestRenderCmdLineBlankWhenIdle(t *testing.T) {
+	bar := RenderCmdLine("", 80, false)
+	if strings.Contains(bar, "/") {
+		t.Error("idle cmd line must not contain /")
+	}
+}
+
+func TestRenderCmdLineShowsQuery(t *testing.T) {
+	bar := RenderCmdLine("hello", 80, false)
+	if !strings.Contains(bar, "/") || !strings.Contains(bar, "hello") {
+		t.Error("confirmed search must show /query")
 	}
 }
