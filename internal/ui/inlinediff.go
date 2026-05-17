@@ -2,7 +2,7 @@
 package ui
 
 import (
-	"github.com/kbliu/review/internal/diff"
+	"github.com/lkebin/review/internal/diff"
 )
 
 // InlineSpan marks a byte range in a line's content that was changed.

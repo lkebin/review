@@ -17,13 +17,13 @@ A terminal-based code review tool written in Go.
 ## Installation
 
 ```bash
-go install github.com/kbliu/review/cmd/review@latest
+go install github.com/lkebin/review/cmd/review@latest
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/kbliu/review.git
+git clone https://github.com/lkebin/review.git
 cd review
 go build ./cmd/review
 ```

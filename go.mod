@@ -1,4 +1,4 @@
-module github.com/kbliu/review
+module github.com/lkebin/review
 
 go 1.24.2
 

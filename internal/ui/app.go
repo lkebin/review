@@ -6,9 +6,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/kbliu/review/internal/diff"
-	"github.com/kbliu/review/internal/git"
-	"github.com/kbliu/review/internal/highlight"
+	"github.com/lkebin/review/internal/diff"
+	"github.com/lkebin/review/internal/git"
+	"github.com/lkebin/review/internal/highlight"
 )
 
 // FileInfo represents a file with diff statistics.

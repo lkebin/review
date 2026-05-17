@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kbliu/review/internal/diff"
+	"github.com/lkebin/review/internal/diff"
 )
 
 func makeTestLines(n int) []ViewLine {

@@ -4,8 +4,8 @@ package ui
 import (
 	"testing"
 
-	"github.com/kbliu/review/internal/diff"
-	"github.com/kbliu/review/internal/highlight"
+	"github.com/lkebin/review/internal/diff"
+	"github.com/lkebin/review/internal/highlight"
 )
 
 func TestBuildViewLinesBasic(t *testing.T) {

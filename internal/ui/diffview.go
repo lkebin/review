@@ -2,8 +2,8 @@
 package ui
 
 import (
-	"github.com/kbliu/review/internal/diff"
-	"github.com/kbliu/review/internal/highlight"
+	"github.com/lkebin/review/internal/diff"
+	"github.com/lkebin/review/internal/highlight"
 )
 
 // DiffView manages the right panel diff display.

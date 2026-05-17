@@ -3,7 +3,7 @@ package ui
 import (
 	"testing"
 
-	"github.com/kbliu/review/internal/diff"
+	"github.com/lkebin/review/internal/diff"
 )
 
 func TestComputeInlineDiffSimple(t *testing.T) {

@@ -6,8 +6,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/kbliu/review/internal/diff"
-	"github.com/kbliu/review/internal/highlight"
+	"github.com/lkebin/review/internal/diff"
+	"github.com/lkebin/review/internal/highlight"
 	"github.com/mattn/go-runewidth"
 )
 

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/kbliu/review/internal/ui"
+	"github.com/lkebin/review/internal/ui"
 	"github.com/urfave/cli/v2"
 )
 
