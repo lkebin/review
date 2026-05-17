@@ -3,10 +3,12 @@ package ui
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/kbliu/review/internal/diff"
 	"github.com/kbliu/review/internal/highlight"
+	"github.com/mattn/go-runewidth"
 )
 
 // ViewLine is a display-ready diff line for the viewport.
@@ -414,24 +416,39 @@ func wrapRenderedLine(rendered string, maxVisibleWidth int) []string {
 	return result
 }
 
-// findANSISafeBreak returns a byte index in s where visible character count
-// reaches maxWidth, correctly skipping ANSI escape sequences.
+// findANSISafeBreak returns a byte index in s where the visible column count
+// reaches maxWidth, walking by rune (never inside a multi-byte UTF-8 sequence)
+// and accounting for wide characters. ANSI SGR escapes (\x1b...m) are skipped.
 func findANSISafeBreak(s string, maxWidth int) int {
 	visible := 0
-	inEscape := false
-	for i := 0; i < len(s); i++ {
+	i := 0
+	for i < len(s) {
 		if s[i] == '\x1b' {
-			inEscape = true
-		}
-		if inEscape {
-			if s[i] == 'm' {
-				inEscape = false
+			j := i + 1
+			for j < len(s) && s[j] != 'm' {
+				j++
 			}
+			if j < len(s) {
+				j++ // consume the terminating 'm'
+			}
+			i = j
 			continue
 		}
-		visible++
+		r, sz := utf8.DecodeRuneInString(s[i:])
+		w := runewidth.RuneWidth(r)
+		if w == 0 {
+			// Zero-width (combining marks, ZWJ, …): attaches to previous rune.
+			i += sz
+			continue
+		}
+		if visible+w > maxWidth {
+			// Including this rune would exceed maxWidth; break before it.
+			return i
+		}
+		visible += w
+		i += sz
 		if visible >= maxWidth {
-			return i + 1
+			return i
 		}
 	}
 	return len(s)
