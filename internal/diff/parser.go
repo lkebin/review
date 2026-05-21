@@ -32,6 +32,7 @@ func Parse(output string) []Line {
 	inHunk := false
 
 	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimRight(line, "\r")
 		if line == "" {
 			continue
 		}

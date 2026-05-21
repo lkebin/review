@@ -59,6 +59,30 @@ func TestFindANSISafeBreakCountsColumnsNotBytes(t *testing.T) {
 	}
 }
 
+// TestFindANSISafeBreakCJKAtBoundary is a regression test for the bug where
+// breaking before a wide CJK character put its opening ANSI escape in the
+// first chunk and the raw character bytes in the second, causing the character
+// to render with the terminal default (black) background instead of the styled one.
+func TestFindANSISafeBreakCJKAtBoundary(t *testing.T) {
+	st := lipgloss.NewStyle().Background(lipgloss.Color("22"))
+	// 'a' is 1 column, '。' is 2 columns.  At maxWidth=2 the break falls
+	// between them: 'a' goes in chunk 1, '。' must start chunk 2 WITH its ANSI prefix.
+	s := st.Render("a") + st.Render("。")
+
+	bp := findANSISafeBreak(s, 2)
+	second := s[bp:]
+
+	if len(second) == 0 {
+		t.Fatal("second chunk is empty; expected it to contain '。'")
+	}
+	if second[0] != '\x1b' {
+		t.Errorf("second chunk starts with raw byte %#x (%q), want ANSI escape \\x1b; "+
+			"the opening color code was left in the first chunk so the character "+
+			"renders with the terminal default (black) background",
+			second[0], second[:min(20, len(second))])
+	}
+}
+
 // TestWrapRenderedLineMultiByteContent verifies the full wrapping pipeline
 // produces only valid UTF-8 chunks when content includes multi-byte chars.
 // Reproduces the reported bug where wrapping at certain widths produced ◊

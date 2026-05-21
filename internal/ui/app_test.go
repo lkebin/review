@@ -2,9 +2,11 @@
 package ui
 
 import (
+	"fmt"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/lkebin/review/internal/diff"
 )
 
 func TestNewModelDefaults(t *testing.T) {
@@ -170,5 +172,66 @@ func TestSearchSpaceInput(t *testing.T) {
 	m = result.(Model)
 	if m.searchQuery != "hello " {
 		t.Errorf("space key: searchQuery = %q, want %q", m.searchQuery, "hello ")
+	}
+}
+
+// TestStaleDiffResponseIgnored verifies that a loadDiffMsg for a file that is
+// no longer selected does not overwrite the current diff view content.
+func TestStaleDiffResponseIgnored(t *testing.T) {
+	m := NewModel(Options{Target: "HEAD"})
+	m.loading = false
+	m.files = []FileInfo{
+		{Status: "M", Name: "file1.go"},
+		{Status: "A", Name: "file2.go"},
+	}
+	m.fileList.SetFiles(m.files)
+
+	// Navigate to file2 (cursor = 1)
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	m = result.(Model)
+
+	// A stale diff for file1 arrives (was in-flight from initial load)
+	staleLines := []diff.Line{
+		{Type: diff.LineAdded, NewLineNo: 1, Content: "+stale file1 content"},
+	}
+	result, _ = m.Update(loadDiffMsg{file: "file1.go", lines: staleLines})
+	m = result.(Model)
+
+	// currentFile must not be set to the stale file
+	if m.currentFile == "file1.go" {
+		t.Error("stale diff response overwrote currentFile; should have been ignored")
+	}
+	// Diff view must not contain stale content
+	if m.diffView.Viewport().LineCount() > 0 {
+		line := m.diffView.Viewport().Lines()[0]
+		if line.RawContent == "stale file1 content" {
+			t.Error("stale diff response populated the diff view; should have been ignored")
+		}
+	}
+}
+
+// TestDiffErrorCleared verifies that a successful diff load for the current
+// file clears a previously-set error so the UI recovers.
+func TestDiffErrorCleared(t *testing.T) {
+	m := NewModel(Options{Target: "HEAD"})
+	m.loading = false
+	m.files = []FileInfo{{Status: "M", Name: "file1.go"}}
+	m.fileList.SetFiles(m.files)
+
+	// Inject a diff error for the current file
+	result, _ := m.Update(loadDiffMsg{file: "file1.go", err: fmt.Errorf("git error")})
+	m = result.(Model)
+	if m.err == nil {
+		t.Fatal("expected error to be set after error message")
+	}
+
+	// A successful diff for the same file arrives (e.g. after a retry or the next nav)
+	goodLines := []diff.Line{
+		{Type: diff.LineContext, OldLineNo: 1, NewLineNo: 1, Content: " ok"},
+	}
+	result, _ = m.Update(loadDiffMsg{file: "file1.go", lines: goodLines})
+	m = result.(Model)
+	if m.err != nil {
+		t.Errorf("error should be cleared after successful diff load, got: %v", m.err)
 	}
 }

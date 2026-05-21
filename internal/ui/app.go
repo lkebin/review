@@ -136,11 +136,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case loadDiffMsg:
+		// Discard stale responses from superseded requests.
+		if msg.file != m.fileList.SelectedFile().Name {
+			return m, nil
+		}
 		m.currentFile = msg.file
 		if msg.err != nil {
 			m.err = msg.err
 			return m, nil
 		}
+		m.err = nil
 		m.diffView.LoadFile(msg.lines, msg.file, m.highlighter)
 		return m, nil
 

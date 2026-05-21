@@ -1,6 +1,7 @@
 package diff
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -94,5 +95,22 @@ func TestParseEmptyDiff(t *testing.T) {
 	lines := Parse("")
 	if len(lines) != 0 {
 		t.Errorf("Expected 0 lines for empty input, got %d", len(lines))
+	}
+}
+
+// TestParseCRLF verifies that Windows-style CRLF line endings do not leave
+// a trailing \r in the parsed content (which would corrupt terminal rendering).
+func TestParseCRLF(t *testing.T) {
+	input := "@@ -1,3 +1,3 @@\r\n" +
+		" context line\r\n" +
+		"-old line\r\n" +
+		"+new line\r\n"
+
+	lines := Parse(input)
+
+	for _, l := range lines {
+		if strings.HasSuffix(l.Content, "\r") {
+			t.Errorf("line content still contains \\r: %q (type=%v)", l.Content, l.Type)
+		}
 	}
 }

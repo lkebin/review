@@ -241,9 +241,10 @@ func (vp *Viewport) displayRowsFor(idx int) int {
 	if contentW < 1 {
 		contentW = 1
 	}
-	rowCap := contentW + 1 // each display row: 1 prefix + contentW content chars
-	runeLen := 1 + len([]rune(line.RawContent))
-	rows := (runeLen + rowCap - 1) / rowCap
+	rowCap := contentW // content area width: prefix (1) + code chars (contentW-1)
+	// Use visual column width (CJK chars count as 2) to match the actual render.
+	visualLen := 1 + runewidth.StringWidth(line.RawContent)
+	rows := (visualLen + rowCap - 1) / rowCap
 	if rows < 1 {
 		rows = 1
 	}
@@ -351,13 +352,13 @@ func (vp *Viewport) Render(theme Theme, digitWidth int) string {
 		// removed/added lines keep their background in that area.
 		blankLineNoPart := lineNoSt.Render(strings.Repeat(" ", lineNoWidth))
 
-		if visibleLen <= contentWidth+1 { // +1 for prefix char
+		if visibleLen <= contentWidth {
 			// Append reset so unclosed ANSI sequences don't bleed into the next row.
 			rows = append(rows, lineNoPart+fullContent+"\x1b[0m")
 			displayLines++
 		} else {
 			// Content wrapping — continuation rows use blank line-number columns.
-			wrappedRows := wrapRenderedLine(fullContent, contentWidth+1)
+			wrappedRows := wrapRenderedLine(fullContent, contentWidth)
 
 			for wi, wr := range wrappedRows {
 				if displayLines >= vp.height {
@@ -365,12 +366,12 @@ func (vp *Viewport) Render(theme Theme, digitWidth int) string {
 				}
 				// Pad each chunk to fill the full content width so the line
 				// background color extends to the right edge of the panel.
-				if wrW := lipgloss.Width(wr); wrW < contentWidth+1 {
+				if wrW := lipgloss.Width(wr); wrW < contentWidth {
 					padSt := lipgloss.NewStyle()
 					if bgColor != "" {
 						padSt = padSt.Background(lipgloss.Color(bgColor))
 					}
-					wr += padSt.Render(strings.Repeat(" ", contentWidth+1-wrW))
+					wr += padSt.Render(strings.Repeat(" ", contentWidth-wrW))
 				}
 				if wi == 0 {
 					rows = append(rows, lineNoPart+wr+"\x1b[0m")
@@ -419,11 +420,20 @@ func wrapRenderedLine(rendered string, maxVisibleWidth int) []string {
 // findANSISafeBreak returns a byte index in s where the visible column count
 // reaches maxWidth, walking by rune (never inside a multi-byte UTF-8 sequence)
 // and accounting for wide characters. ANSI SGR escapes (\x1b...m) are skipped.
+//
+// The break is placed BEFORE the ANSI sequences that precede the character being
+// excluded, so the character and its styling travel together to the second chunk.
+// Without this, lipgloss-rendered wide characters could have their opener in the
+// first chunk and their bytes in the second, producing a black background.
 func findANSISafeBreak(s string, maxWidth int) int {
 	visible := 0
 	i := 0
 	for i < len(s) {
-		if s[i] == '\x1b' {
+		// Record start of this visual unit (ANSI sequences + character together)
+		// so that when we break before this character, its styling stays with it.
+		unitStart := i
+		// Skip all ANSI SGR sequences that precede the next visible character.
+		for i < len(s) && s[i] == '\x1b' {
 			j := i + 1
 			for j < len(s) && s[j] != 'm' {
 				j++
@@ -432,7 +442,9 @@ func findANSISafeBreak(s string, maxWidth int) int {
 				j++ // consume the terminating 'm'
 			}
 			i = j
-			continue
+		}
+		if i >= len(s) {
+			break
 		}
 		r, sz := utf8.DecodeRuneInString(s[i:])
 		w := runewidth.RuneWidth(r)
@@ -442,8 +454,8 @@ func findANSISafeBreak(s string, maxWidth int) int {
 			continue
 		}
 		if visible+w > maxWidth {
-			// Including this rune would exceed maxWidth; break before it.
-			return i
+			// Break before this character's ANSI prefix so it lands in the next chunk.
+			return unitStart
 		}
 		visible += w
 		i += sz
@@ -478,8 +490,16 @@ func (vp *Viewport) lineBackground(lt diff.LineType, isCursor bool, th Theme) st
 func (vp *Viewport) renderContent(line ViewLine, width int, bgColor string, th Theme) string {
 	if line.Type == diff.LineHunkHeader {
 		hunkText := line.Prefix
-		if len(hunkText) > width {
-			hunkText = hunkText[:width]
+		if lipgloss.Width(hunkText) > width {
+			runes := []rune(hunkText)
+			acc := 0
+			for i, r := range runes {
+				if acc+runewidth.RuneWidth(r) > width {
+					hunkText = string(runes[:i])
+					break
+				}
+				acc += runewidth.RuneWidth(r)
+			}
 		}
 		padded := hunkText + strings.Repeat(" ", max(0, width-lipgloss.Width(hunkText)))
 		return th.HunkStyle().Render(padded)
@@ -546,11 +566,11 @@ func (vp *Viewport) renderContent(line ViewLine, width int, bgColor string, th T
 		}
 	}
 
-	// Pad to fill content width
+	// Pad to fill content width (prefix char already included in rendered).
 	rendered := result.String()
 	visibleWidth := lipgloss.Width(rendered)
-	if visibleWidth < width+1 { // +1 for prefix
-		padLen := width + 1 - visibleWidth
+	if visibleWidth < width {
+		padLen := width - visibleWidth
 		padStyle := lipgloss.NewStyle()
 		if bgColor != "" {
 			padStyle = padStyle.Background(lipgloss.Color(bgColor))

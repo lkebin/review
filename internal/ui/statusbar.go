@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 // RenderStatusBar renders a two-part status bar:
@@ -23,20 +24,20 @@ func RenderStatusBar(branch string, fileCount int, currentFile string, added, re
 		right = fmt.Sprintf(" %s +%d -%d ", currentFile, added, removed)
 	}
 
-	leftW := len(left)
-	rightW := len(right)
+	leftW := lipgloss.Width(left)
+	rightW := lipgloss.Width(right)
 	fillW := width - leftW - rightW
 	if fillW < 0 {
 		// Truncate right side if too narrow
 		available := width - leftW
-		if available > 0 && len(right) > available {
-			right = right[:available]
+		if available > 0 && lipgloss.Width(right) > available {
+			right = truncateRight(right, available)
 			fillW = 0
 		} else {
 			right = ""
 			fillW = width - leftW
 			if fillW < 0 {
-				left = left[:width]
+				left = truncateRight(left, width)
 				fillW = 0
 			}
 		}
@@ -44,6 +45,22 @@ func RenderStatusBar(branch string, fileCount int, currentFile string, added, re
 
 	fill := strings.Repeat(" ", fillW)
 	return style.Width(width).Render(left + fill + right)
+}
+
+// truncateRight truncates s to at most maxW visible columns from the left.
+func truncateRight(s string, maxW int) string {
+	if lipgloss.Width(s) <= maxW {
+		return s
+	}
+	acc := 0
+	for i, r := range s {
+		w := runewidth.RuneWidth(r)
+		if acc+w > maxW {
+			return s[:i]
+		}
+		acc += w
+	}
+	return s
 }
 
 // RenderCmdLine renders the vim-style command line (bottom row).

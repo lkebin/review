@@ -4,6 +4,8 @@ package ui
 import (
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 func TestFileListCursorDown(t *testing.T) {
@@ -103,6 +105,52 @@ func TestFileListCalcWidth(t *testing.T) {
 	}
 	if w > 50 {
 		t.Errorf("width = %d, should cap at 50", w)
+	}
+}
+
+// TestTruncateNameCJK verifies that truncateName uses visual column widths so
+// that wide (CJK) characters are counted as 2 columns, not 1.
+func TestTruncateNameCJK(t *testing.T) {
+	// "测试文件.dart": 测(2)+试(2)+文(2)+件(2)+.(1)+d(1)+a(1)+r(1)+t(1) = 13 cols, 9 runes
+	name := "测试文件.dart"
+
+	// maxWidth=8: should truncate — 13 cols > 8
+	got := truncateName(name, 8)
+	if got == name {
+		t.Error("truncateName did not truncate a CJK name that exceeds maxWidth in columns")
+	}
+
+	// maxWidth=13: exact fit — should not truncate
+	got = truncateName(name, 13)
+	if got != name {
+		t.Errorf("truncateName truncated a name that fits exactly: got %q", got)
+	}
+
+	// Result must not exceed maxWidth visual columns
+	for _, maxW := range []int{4, 6, 8, 10, 13, 20} {
+		result := truncateName(name, maxW)
+		w := lipgloss.Width(result)
+		if w > maxW {
+			t.Errorf("truncateName(name, %d) = %q, visual width %d exceeds max", maxW, result, w)
+		}
+	}
+}
+
+// TestFileListRenderCJKRowWidth verifies that file list rows containing CJK
+// filenames are exactly `width` visible columns wide (no overflow).
+func TestFileListRenderCJKRowWidth(t *testing.T) {
+	const listWidth = 20
+	fl := NewFileList([]FileInfo{
+		{Status: "M", Name: "测试文件.dart"},
+		{Status: "A", Name: "short.go"},
+	})
+	th := DefaultTheme()
+	output := fl.Render(listWidth, 5, th)
+	for i, row := range strings.Split(output, "\n") {
+		w := lipgloss.Width(row)
+		if w != listWidth {
+			t.Errorf("row[%d] width=%d, want %d: %q", i, w, listWidth, row)
+		}
 	}
 }
 

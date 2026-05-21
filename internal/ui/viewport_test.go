@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/lkebin/review/internal/diff"
 )
 
@@ -213,6 +214,27 @@ func TestViewportRenderWrapping(t *testing.T) {
 	}
 }
 
+// TestViewportRenderRowWidth verifies that every rendered row is exactly vp.width
+// visible columns wide — no off-by-one that would cause terminal line-wrap.
+func TestViewportRenderRowWidth(t *testing.T) {
+	const vpWidth = 40
+	vp := NewViewport(vpWidth, 5)
+	vp.SetLines([]ViewLine{
+		{LeftNo: 1, RightNo: 1, Type: diff.LineContext, Prefix: " ", RawContent: "short"},
+		{LeftNo: 0, RightNo: 2, Type: diff.LineAdded, Prefix: "+", RawContent: "added line"},
+		{LeftNo: 2, RightNo: 0, Type: diff.LineRemoved, Prefix: "-", RawContent: "removed line"},
+		{Type: diff.LineHunkHeader, Prefix: "@@ -1,3 +1,4 @@ func foo()"},
+	})
+
+	th := DefaultTheme()
+	output := vp.Render(th, 2)
+	for i, row := range strings.Split(output, "\n") {
+		if w := lipgloss.Width(row); w != vpWidth {
+			t.Errorf("row[%d] width=%d, want %d: %q", i, w, vpWidth, row)
+		}
+	}
+}
+
 func TestViewportRenderEmpty(t *testing.T) {
 	vp := NewViewport(40, 5)
 	th := DefaultTheme()
@@ -234,12 +256,45 @@ func cursorVisible(vp *Viewport) bool {
 	return total <= vp.height
 }
 
+// TestDisplayRowsForCJK verifies that displayRowsFor counts visual column widths
+// (CJK chars = 2 cols each) so scroll tracking matches the actual rendered output.
+func TestDisplayRowsForCJK(t *testing.T) {
+	// Width=20, lineNoWidth=7 → contentW=13 (rowCap=13)
+	// "你好世界" = 4 CJK chars × 2 cols = 8 cols of content.
+	// prefix(1) + 8 = 9 visual cols → fits in 1 row.
+	vp := NewViewport(20, 10)
+	vp.lineNoWidth = 7
+	vp.SetLines([]ViewLine{{
+		LeftNo: 1, RightNo: 1,
+		Type:       diff.LineContext,
+		Prefix:     " ",
+		RawContent: "你好世界",
+	}})
+	rows := vp.displayRowsFor(0)
+	if rows != 1 {
+		t.Errorf("displayRowsFor CJK 4-char line = %d rows, want 1", rows)
+	}
+
+	// "你好世界你好世界" = 8 CJK chars × 2 cols = 16 cols of content.
+	// prefix(1) + 16 = 17 visual cols → needs ceil(17/13) = 2 rows.
+	vp.SetLines([]ViewLine{{
+		LeftNo: 1, RightNo: 1,
+		Type:       diff.LineContext,
+		Prefix:     " ",
+		RawContent: "你好世界你好世界",
+	}})
+	rows = vp.displayRowsFor(0)
+	if rows != 2 {
+		t.Errorf("displayRowsFor CJK 8-char line = %d rows, want 2", rows)
+	}
+}
+
 // TestViewportCursorVisibleWrapped verifies that the cursor stays on-screen
 // when scrolling through wrapped lines.
 func TestViewportCursorVisibleWrapped(t *testing.T) {
 	// Width=30, lineNoWidth=7 (digitWidth=2 → 2*2+3=7)
-	// contentWidth = 30-7 = 23, rowCap = 24
-	// Lines with 25 content chars: runeLen=26 > 24 → 2 display rows each
+	// contentWidth = 30-7 = 23, rowCap = 23
+	// Lines with 25 content chars: runeLen=26 > 23 → 2 display rows each
 	// height=10 → 5 such lines fit per screen
 	vp := NewViewport(30, 10)
 	vp.lineNoWidth = 7

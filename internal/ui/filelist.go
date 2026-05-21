@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 // FileList manages the left panel file list.
@@ -135,8 +136,8 @@ func (fl *FileList) SelectedFile() FileInfo {
 func (fl *FileList) CalcWidth() int {
 	w := 20 // minimum
 	for _, f := range fl.files {
-		// "M " + filename + padding
-		lineW := len(f.Status) + 1 + len(f.Name) + 2
+		// badge(1) + space(1) + filename visual width + padding(2)
+		lineW := 1 + 1 + runewidth.StringWidth(f.Name) + 2
 		if lineW > w {
 			w = lineW
 		}
@@ -199,15 +200,29 @@ func (fl *FileList) Render(width, height int, theme Theme) string {
 	return strings.Join(rows, "\n")
 }
 
-// truncateName truncates a path to maxWidth visible characters (rune-aware).
-// Truncates from the left so the filename is always visible: "…rc/app/alert.c"
+// truncateName truncates a path to at most maxWidth visible columns, keeping
+// the rightmost portion so the filename is always visible: "…rc/app/alert.c".
+// Uses visual column widths so wide (CJK) characters are counted as 2 columns.
 func truncateName(name string, maxWidth int) string {
 	if maxWidth <= 0 {
 		return ""
 	}
-	runes := []rune(name)
-	if len(runes) <= maxWidth {
+	if runewidth.StringWidth(name) <= maxWidth {
 		return name
 	}
-	return "…" + string(runes[len(runes)-(maxWidth-1):])
+	// Walk from the right accumulating visual width until we fill maxWidth-1
+	// columns (1 column is reserved for the leading "…").
+	target := maxWidth - 1
+	runes := []rune(name)
+	acc := 0
+	start := len(runes)
+	for i := len(runes) - 1; i >= 0; i-- {
+		w := runewidth.RuneWidth(runes[i])
+		if acc+w > target {
+			break
+		}
+		acc += w
+		start = i
+	}
+	return "…" + string(runes[start:])
 }
