@@ -65,9 +65,16 @@ review -U 10 main
 
 | Key | Action |
 |-----|--------|
-| `Tab` | Toggle focus between file list and diff |
+| `w` | Toggle focus between file list and diff |
 | `Enter` | Focus diff view |
 | `>` / `<` | Grow / shrink file list panel |
+
+### Fold (diff panel)
+
+| Key | Action |
+|-----|--------|
+| `zo` | Expand folded context before a hunk |
+| `zc` | Collapse expanded context |
 
 ### Search
 

@@ -289,6 +289,201 @@ func TestDisplayRowsForCJK(t *testing.T) {
 	}
 }
 
+// expandGapHelper runs ExpandGap on the viewport at the given cursor index
+// with the provided gap content lines. Returns the number of lines inserted.
+func expandGapHelper(vp *Viewport, cursorIdx int, gapLines []string) int {
+	return vp.ExpandGap(cursorIdx, gapLines, nil, "")
+}
+
+func TestExpandGapFirstHunk(t *testing.T) {
+	// Simulate a file starting at line 6 (hunk @@ -6,9 +6,9 @@)
+	lines := []ViewLine{
+		{Type: diff.LineHunkHeader, Prefix: "@@ -6,9 +6,9 @@", RightNo: 0},
+		{Type: diff.LineContext, LeftNo: 6, RightNo: 6, Prefix: " ", RawContent: "line 6"},
+		{Type: diff.LineContext, LeftNo: 7, RightNo: 7, Prefix: " ", RawContent: "line 7"},
+	}
+	vp := NewViewport(80, 24)
+	vp.SetLines(lines)
+
+	// Gap: no prev line, next line RightNo=6 → gap is lines 1-5
+	inserted := expandGapHelper(vp, 0, []string{"line1", "line2", "line3", "line4", "line5"})
+	if inserted != 5 {
+		t.Fatalf("ExpandGap inserted %d lines, want 5", inserted)
+	}
+	if len(vp.lines) != 8 {
+		t.Fatalf("total lines = %d, want 8", len(vp.lines))
+	}
+	// First 5 lines should be expanded, line 6 is the hunk header
+	for i := 0; i < 5; i++ {
+		if !vp.lines[i].Expanded {
+			t.Errorf("lines[%d].Expanded = false, want true", i)
+		}
+		if vp.lines[i].RightNo != i+1 {
+			t.Errorf("lines[%d].RightNo = %d, want %d", i, i+1, i+1)
+		}
+	}
+	// Hunk header should be at index 5
+	if vp.lines[5].Type != diff.LineHunkHeader {
+		t.Errorf("lines[5] should be hunk header, got type %v", vp.lines[5].Type)
+	}
+	// Cursor should be past the hunk header (skipping hidden header)
+	if vp.Cursor() != 6 {
+		t.Errorf("cursor = %d, want 6", vp.Cursor())
+	}
+}
+
+func TestExpandGapMiddleHunk(t *testing.T) {
+	lines := []ViewLine{
+		{Type: diff.LineContext, LeftNo: 17, RightNo: 17, Prefix: " ", RawContent: "line 17"},
+		{Type: diff.LineHunkHeader, Prefix: "@@ -20,5 +20,5 @@", RightNo: 0},
+		{Type: diff.LineContext, LeftNo: 20, RightNo: 20, Prefix: " ", RawContent: "line 20"},
+	}
+	vp := NewViewport(80, 24)
+	vp.SetLines(lines)
+
+	// Gap: prev line RightNo=17, next line RightNo=20 → gap is lines 18-19
+	inserted := expandGapHelper(vp, 1, []string{"line18", "line19"})
+	if inserted != 2 {
+		t.Fatalf("ExpandGap inserted %d lines, want 2", inserted)
+	}
+	if len(vp.lines) != 5 {
+		t.Fatalf("total lines = %d, want 5", len(vp.lines))
+	}
+	// lines[0]=line17, lines[1]=line18(exp), lines[2]=line19(exp), lines[3]=hunk, lines[4]=line20
+	if !vp.lines[1].Expanded || !vp.lines[2].Expanded {
+		t.Error("gap lines should be marked Expanded")
+	}
+	// Cursor should be past the hunk header (skipping hidden header)
+	if vp.Cursor() != 4 {
+		t.Errorf("cursor = %d, want 4", vp.Cursor())
+	}
+}
+
+func TestExpandGapLastHunk(t *testing.T) {
+	// Last hunk has no next line. Use hunk header's +start to determine gap.
+	// @@ -90,3 +80,3 @@ → new_start=80
+	vp := NewViewport(80, 24)
+	vp.SetLines([]ViewLine{
+		{Type: diff.LineContext, LeftNo: 75, RightNo: 75, Prefix: " ", RawContent: "line 75"},
+		{Type: diff.LineHunkHeader, Prefix: "@@ -90,3 +80,3 @@ func end()", RightNo: 0},
+	})
+	// Gap: prev line RightNo=75, hunk new_start=80 → gap is lines 76-79
+	inserted := expandGapHelper(vp, 1, []string{"line76", "line77", "line78", "line79"})
+	if inserted != 4 {
+		t.Fatalf("ExpandGap inserted %d lines, want 4", inserted)
+	}
+	for i := 1; i <= 4; i++ {
+		if !vp.lines[i].Expanded {
+			t.Errorf("gap line %d should be Expanded", i)
+		}
+	}
+}
+
+func TestExpandGapAlreadyExpanded(t *testing.T) {
+	lines := []ViewLine{
+		{Type: diff.LineContext, LeftNo: 17, RightNo: 17, Prefix: " ", RawContent: "line 17"},
+		{Type: diff.LineHunkHeader, Prefix: "@@ -20,5 +20,5 @@", RightNo: 0},
+		{Type: diff.LineContext, LeftNo: 20, RightNo: 20, Prefix: " ", RawContent: "line 20"},
+	}
+	vp := NewViewport(80, 24)
+	vp.SetLines(lines)
+	// First expand
+	vp.ExpandGap(1, []string{"line18", "line19"}, nil, "")
+	// Second expand on same hunk should be no-op
+	inserted := vp.ExpandGap(vp.Cursor(), []string{"line18", "line19"}, nil, "")
+	if inserted != 0 {
+		t.Errorf("re-expand inserted %d lines, want 0", inserted)
+	}
+}
+
+func TestCollapseGap(t *testing.T) {
+	lines := []ViewLine{
+		{Type: diff.LineContext, LeftNo: 17, RightNo: 17, Prefix: " ", RawContent: "line 17"},
+		{Type: diff.LineHunkHeader, Prefix: "@@ -20,5 +20,5 @@", RightNo: 0},
+		{Type: diff.LineContext, LeftNo: 20, RightNo: 20, Prefix: " ", RawContent: "line 20"},
+	}
+	vp := NewViewport(80, 24)
+	vp.SetLines(lines)
+	inserted := vp.ExpandGap(1, []string{"line18", "line19"}, nil, "")
+	// After expand: [0]line17, [1]line18(exp), [2]line19(exp), [3]h1(exp+hidden), [4]line20
+	// cursor is at 4 (past hidden header). Collapse from hunk header at index 3.
+	hunkIdx := 1 + inserted // hunk header is at original position + inserted count
+	removed := vp.CollapseGap(hunkIdx)
+	if removed != 2 {
+		t.Fatalf("CollapseGap removed %d lines, want 2", removed)
+	}
+	if len(vp.lines) != 3 {
+		t.Fatalf("total lines = %d, want 3", len(vp.lines))
+	}
+	if vp.lines[0].RawContent != "line 17" || vp.lines[1].Type != diff.LineHunkHeader {
+		t.Error("collapse should restore original lines")
+	}
+	if vp.Cursor() != 1 {
+		t.Errorf("cursor = %d, want 1 (original hunk header position)", vp.Cursor())
+	}
+}
+
+func TestCollapseNoExpand(t *testing.T) {
+	lines := []ViewLine{
+		{Type: diff.LineHunkHeader, Prefix: "@@ -6,9 +6,9 @@", RightNo: 0},
+		{Type: diff.LineContext, LeftNo: 6, RightNo: 6, Prefix: " ", RawContent: "line 6"},
+	}
+	vp := NewViewport(80, 24)
+	vp.SetLines(lines)
+
+	removed := vp.CollapseGap(0)
+	if removed != 0 {
+		t.Errorf("CollapseGap on unexpanded gap removed %d lines, want 0", removed)
+	}
+}
+
+func TestExpandGapCursorNotOnHunk(t *testing.T) {
+	lines := []ViewLine{
+		{Type: diff.LineContext, LeftNo: 1, RightNo: 1, Prefix: " ", RawContent: "line 1"},
+	}
+	vp := NewViewport(80, 24)
+	vp.SetLines(lines)
+
+	inserted := expandGapHelper(vp, 0, []string{"line2"})
+	if inserted != 0 {
+		t.Errorf("ExpandGap on non-hunk inserted %d lines, want 0", inserted)
+	}
+}
+
+func TestExpandMultipleGaps(t *testing.T) {
+	// Two hunks: expand middle gap then collapse first gap
+	lines := []ViewLine{
+		{Type: diff.LineHunkHeader, Prefix: "@@ -6,9 +6,9 @@", RightNo: 0},
+		{Type: diff.LineContext, LeftNo: 6, RightNo: 6, Prefix: " ", RawContent: "line 6"},
+		{Type: diff.LineHunkHeader, Prefix: "@@ -10,3 +10,3 @@", RightNo: 0},
+		{Type: diff.LineContext, LeftNo: 10, RightNo: 10, Prefix: " ", RawContent: "line 10"},
+	}
+	vp := NewViewport(80, 24)
+	vp.SetLines(lines)
+
+	// Expand first hunk (lines 1-5)
+	vp.ExpandGap(0, []string{"l1", "l2", "l3", "l4", "l5"}, nil, "")
+	// After expand: [0-4]exp, [5]h1, [6]line6, [7]h2, [8]line10
+	// Second hunk header is at index 7
+	inserted2 := vp.ExpandGap(7, []string{"l7", "l8", "l9"}, nil, "")
+	if inserted2 != 3 {
+		t.Fatalf("second expand inserted %d lines, want 3", inserted2)
+	}
+	if len(vp.lines) != 12 {
+		t.Fatalf("total lines = %d, want 12", len(vp.lines))
+	}
+	// Collapse first hunk (at index 5)
+	vp.cursor = 5
+	removed1 := vp.CollapseGap(5)
+	if removed1 != 5 {
+		t.Errorf("collapse first hunk removed %d lines, want 5", removed1)
+	}
+	// Verify second hunk's expanded lines still there
+	if len(vp.lines) != 7 {
+		t.Fatalf("after collapse total lines = %d, want 7", len(vp.lines))
+	}
+}
+
 // TestViewportCursorVisibleWrapped verifies that the cursor stays on-screen
 // when scrolling through wrapped lines.
 func TestViewportCursorVisibleWrapped(t *testing.T) {

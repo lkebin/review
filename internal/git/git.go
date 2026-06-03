@@ -3,6 +3,7 @@ package git
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -136,4 +137,30 @@ func GetDiff(opts Options, file string) (string, error) {
 	}
 
 	return out.String(), nil
+}
+
+// GetFileContent reads a file's lines from the working tree (or the index if staged).
+func GetFileContent(path string, staged bool) ([]string, error) {
+	var data []byte
+	var err error
+	if staged {
+		cmd := exec.Command("git", "show", ":"+path)
+		var out bytes.Buffer
+		cmd.Stdout = &out
+		cmd.Stderr = &bytes.Buffer{}
+		if err := cmd.Run(); err != nil {
+			return nil, fmt.Errorf("git show :%s: %w", path, err)
+		}
+		data = out.Bytes()
+	} else {
+		data, err = os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("read file %s: %w", path, err)
+		}
+	}
+	s := strings.TrimSuffix(string(data), "\n")
+	if s == "" {
+		return nil, nil
+	}
+	return strings.Split(s, "\n"), nil
 }

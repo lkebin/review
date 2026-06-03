@@ -26,6 +26,8 @@ const (
 	ActionGrowPanel
 	ActionShrinkPanel
 	ActionSearchOpen
+	ActionExpandFold
+	ActionCollapseFold
 )
 
 // keyState represents the state machine state.
@@ -34,6 +36,7 @@ type keyState int
 const (
 	stateNormal keyState = iota
 	stateG
+	stateZ
 )
 
 // KeyMapper translates key events into semantic Actions using a prefix key state machine.
@@ -60,6 +63,16 @@ func (km *KeyMapper) HandleKey(msg tea.KeyMsg, focus FocusType) Action {
 			return ActionTop
 		}
 		return ActionNone
+	case stateZ:
+		km.state = stateNormal
+		switch msg.String() {
+		case "o":
+			return ActionExpandFold
+		case "c":
+			return ActionCollapseFold
+		default:
+			return km.handleNormal(msg, focus)
+		}
 	default:
 		return km.handleNormal(msg, focus)
 	}
@@ -79,7 +92,10 @@ func (km *KeyMapper) handleNormal(msg tea.KeyMsg, focus FocusType) Action {
 		return ActionNone
 	case "G":
 		return ActionBottom
-	case "tab":
+	case "z":
+		km.state = stateZ
+		return ActionNone
+	case "w":
 		return ActionFocusToggle
 	case ">":
 		return ActionGrowPanel

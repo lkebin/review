@@ -393,6 +393,95 @@ func (m Model) handleAction(action Action) (tea.Model, tea.Cmd) {
 			m.diffView.Viewport().PrevHunk()
 		}
 		return m, nil
+	case ActionExpandFold:
+		return m.doExpandFold()
+	case ActionCollapseFold:
+		return m.doCollapseFold()
+	}
+
+	return m, nil
+}
+
+func (m Model) doExpandFold() (tea.Model, tea.Cmd) {
+	if m.focus != FocusDiff {
+		return m, nil
+	}
+	vp := m.diffView.Viewport()
+	lines := vp.Lines()
+	cursor := vp.Cursor()
+
+	if cursor >= len(lines) || lines[cursor].Type != diff.LineHunkHeader {
+		return m, nil
+	}
+
+	// Determine gap line range.
+	// currStart is the first new-file line number of the current hunk,
+	// always derived from the hunk header (avoids RightNo=0 on removed lines).
+	currStart := diff.ParseHunkNewStart(lines[cursor].Prefix)
+
+	// prevEnd is the last new-file line number visible before this hunk header.
+	// Scan backward past hunk headers and removed lines (RightNo=0).
+	prevEnd := 0
+	for i := cursor - 1; i >= 0; i-- {
+		if lines[i].RightNo > 0 {
+			prevEnd = lines[i].RightNo
+			break
+		}
+	}
+
+	gapStart := prevEnd + 1
+	if gapStart < 1 {
+		gapStart = 1
+	}
+	gapEnd := currStart - 1
+
+	if gapStart > gapEnd {
+		return m, nil
+	}
+
+	fileLines, err := git.GetFileContent(m.currentFile, m.opts.Staged)
+	if err != nil {
+		m.err = err
+		return m, nil
+	}
+	if gapEnd > len(fileLines) {
+		gapEnd = len(fileLines)
+	}
+	if gapStart > gapEnd {
+		return m, nil
+	}
+	gapContent := fileLines[gapStart-1 : gapEnd]
+
+	vp.ExpandGap(cursor, gapContent, m.highlighter, m.currentFile)
+	return m, nil
+}
+
+func (m Model) doCollapseFold() (tea.Model, tea.Cmd) {
+	if m.focus != FocusDiff {
+		return m, nil
+	}
+	vp := m.diffView.Viewport()
+	lines := vp.Lines()
+	cursor := vp.Cursor()
+
+	if cursor >= len(lines) {
+		return m, nil
+	}
+
+	// If cursor is on a visible hunk header, collapse from there directly.
+	if lines[cursor].Type == diff.LineHunkHeader && !lines[cursor].Expanded {
+		vp.CollapseGap(cursor)
+		return m, nil
+	}
+
+	// If cursor is on an expanded line, scan forward for the associated hunk header.
+	if lines[cursor].Expanded {
+		for i := cursor; i < len(lines); i++ {
+			if lines[i].Type == diff.LineHunkHeader && lines[i].Expanded {
+				vp.CollapseGap(i)
+				return m, nil
+			}
+		}
 	}
 
 	return m, nil
@@ -458,9 +547,10 @@ func (m Model) helpLines() []string {
   Ctrl+D / U   Half page down / up  (diff only)
   Ctrl+F / B   Page down / up
   n / N        Next / previous hunk  (diff only)
+  zo / zc      Expand / collapse context  (diff only)
 
   Panels
-  Tab          Toggle focus between panels
+  w            Toggle focus between panels
   Enter        Focus diff view
   > / <        Grow / shrink file list panel
 

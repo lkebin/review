@@ -111,6 +111,13 @@ func parseHunkHeader(line string) (oldStart, newStart int) {
 	return
 }
 
+// ParseHunkNewStart extracts the new-file start line number from a hunk header.
+// e.g., "@@ -10,7 +20,7 @@" returns 20.
+func ParseHunkNewStart(header string) int {
+	_, newStart := parseHunkHeader(header)
+	return newStart
+}
+
 // Stats represents diff statistics
 type Stats struct {
 	Added   int

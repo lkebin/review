@@ -36,8 +36,8 @@ func TestActionDispatchFocusSwitch(t *testing.T) {
 	m.files = []FileInfo{{Status: "M", Name: "a.go"}}
 	m.focus = FocusList
 
-	// Tab → toggle focus to diff
-	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	// w → toggle focus to diff
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
 	m = result.(Model)
 
 	if m.focus != FocusDiff {
@@ -233,5 +233,118 @@ func TestDiffErrorCleared(t *testing.T) {
 	m = result.(Model)
 	if m.err != nil {
 		t.Errorf("error should be cleared after successful diff load, got: %v", m.err)
+	}
+}
+
+func TestExpandFoldActionNotInListFocus(t *testing.T) {
+	m := NewModel(Options{Target: "HEAD"})
+	m.loading = false
+	m.focus = FocusList
+
+	result, _ := m.handleAction(ActionExpandFold)
+	if result.(Model).focus != FocusList {
+		t.Error("ActionExpandFold should be no-op when focus is list")
+	}
+}
+
+func TestCollapseFoldActionNotInListFocus(t *testing.T) {
+	m := NewModel(Options{Target: "HEAD"})
+	m.loading = false
+	m.focus = FocusList
+
+	result, _ := m.handleAction(ActionCollapseFold)
+	if result.(Model).focus != FocusList {
+		t.Error("ActionCollapseFold should be no-op when focus is list")
+	}
+}
+
+func TestCollapseFoldFromExpandedLine(t *testing.T) {
+	m := NewModel(Options{Target: "HEAD"})
+	m.loading = false
+	m.files = []FileInfo{{Status: "M", Name: "a.go"}}
+	m.focus = FocusDiff
+	m.currentFile = "a.go"
+
+	// Set up viewport with expanded gap and hidden hunk header
+	vp := m.diffView.Viewport()
+	vp.SetLines([]ViewLine{
+		{Type: diff.LineContext, LeftNo: 17, RightNo: 17, Prefix: " ", RawContent: "line 17"},
+		{Type: diff.LineContext, LeftNo: 18, RightNo: 18, Prefix: " ", RawContent: "line 18", Expanded: true},
+		{Type: diff.LineContext, LeftNo: 19, RightNo: 19, Prefix: " ", RawContent: "line 19", Expanded: true},
+		{Type: diff.LineHunkHeader, Prefix: "@@ -20,5 +20,5 @@", LeftNo: 0, RightNo: 0, Expanded: true},
+		{Type: diff.LineContext, LeftNo: 20, RightNo: 20, Prefix: " ", RawContent: "line 20"},
+	})
+
+	// Cursor starts on line 17 — collapse from non-expanded line should be no-op
+	before := vp.LineCount()
+	result, _ := m.handleAction(ActionCollapseFold)
+	after := result.(Model).diffView.Viewport().LineCount()
+	if after != before {
+		t.Errorf("collapse from non-expanded line changed count from %d to %d", before, after)
+	}
+
+	// Move cursor to expanded line and collapse
+	vp.CursorDown() // moves to line 18 (Expanded)
+	result, _ = result.(Model).handleAction(ActionCollapseFold)
+	vp = result.(Model).diffView.Viewport()
+	if vp.LineCount() != 3 {
+		t.Errorf("after collapse from expanded line: total lines = %d, want 3", vp.LineCount())
+	}
+	if vp.Lines()[0].RawContent != "line 17" || vp.Lines()[1].Type != diff.LineHunkHeader {
+		t.Error("collapse from expanded line should restore original lines")
+	}
+	if vp.Lines()[1].Expanded {
+		t.Error("hunk header should not be Expanded after collapse")
+	}
+}
+
+func TestNextHunkSkipsHiddenHeader(t *testing.T) {
+	m := NewModel(Options{Target: "HEAD"})
+	m.loading = false
+	m.files = []FileInfo{{Status: "M", Name: "a.go"}}
+	m.focus = FocusDiff
+	m.currentFile = "a.go"
+
+	vp := m.diffView.Viewport()
+	vp.SetLines([]ViewLine{
+		{Type: diff.LineHunkHeader, Prefix: "@@ -1,3 +1,3 @@", LeftNo: 0, RightNo: 0},
+		{Type: diff.LineContext, LeftNo: 1, RightNo: 1, Prefix: " ", RawContent: "line 1"},
+		{Type: diff.LineHunkHeader, Prefix: "@@ -5,2 +5,2 @@", LeftNo: 0, RightNo: 0, Expanded: true}, // hidden
+		{Type: diff.LineContext, LeftNo: 5, RightNo: 5, Prefix: " ", RawContent: "line 5"},
+		{Type: diff.LineHunkHeader, Prefix: "@@ -10,1 +10,1 @@", LeftNo: 0, RightNo: 0},
+		{Type: diff.LineContext, LeftNo: 10, RightNo: 10, Prefix: " ", RawContent: "line 10"},
+	})
+
+	// From line 0 (first hunk), NextHunk should skip the hidden header and go to the third
+	vp.NextHunk()
+	if vp.Cursor() != 4 {
+		t.Errorf("NextHunk after hidden header: cursor = %d, want 4 (third hunk)", vp.Cursor())
+	}
+
+	// PrevHunk should also skip the hidden header
+	vp.PrevHunk()
+	if vp.Cursor() != 0 {
+		t.Errorf("PrevHunk skipping hidden: cursor = %d, want 0 (first hunk)", vp.Cursor())
+	}
+}
+
+func TestExpandFoldOnNonHunkLine(t *testing.T) {
+	m := NewModel(Options{Target: "HEAD"})
+	m.loading = false
+	m.files = []FileInfo{{Status: "M", Name: "a.go"}}
+	m.focus = FocusDiff
+	m.currentFile = "a.go"
+
+	m.diffView.Viewport().SetLines([]ViewLine{
+		{Type: diff.LineHunkHeader, Prefix: "@@ -1,3 +1,3 @@"},
+		{Type: diff.LineContext, LeftNo: 1, RightNo: 1, Prefix: " ", RawContent: "hello"},
+	})
+	m.diffView.Viewport().CursorDown()
+
+	before := m.diffView.Viewport().LineCount()
+	result, _ := m.handleAction(ActionExpandFold)
+	after := result.(Model).diffView.Viewport().LineCount()
+	if after != before {
+		t.Errorf("line count changed from %d to %d on non-hunk expand", before, after)
 	}
 }
