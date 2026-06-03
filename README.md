@@ -2,6 +2,8 @@
 
 A terminal-based code review tool written in Go.
 
+![review screenshot](./screenshot/review.png)
+
 ## Features
 
 - **Split-view interface**: File list on the left, diff content on the right
