@@ -20,6 +20,7 @@ type ViewLine struct {
 	RawContent  string            // plain text, no ANSI
 	Tokens      []highlight.Token // syntax highlight tokens
 	InlineSpans []InlineSpan      // character-level diff emphasis
+	Expanded    bool              // true if inserted by gap-expand operation
 }
 
 // Viewport manages scrollable content with cursor tracking.
@@ -63,21 +64,29 @@ func (vp *Viewport) Lines() []ViewLine { return vp.lines }
 // LineCount returns the number of logical lines.
 func (vp *Viewport) LineCount() int { return len(vp.lines) }
 
-// CursorDown moves the cursor down one line.
+// CursorDown moves the cursor down one logical line, skipping hidden hunk headers.
 func (vp *Viewport) CursorDown() {
 	if len(vp.lines) == 0 {
 		return
 	}
-	if vp.cursor < len(vp.lines)-1 {
-		vp.cursor++
+	for i := vp.cursor + 1; i < len(vp.lines); i++ {
+		if vp.lines[i].Type == diff.LineHunkHeader && vp.lines[i].Expanded {
+			continue
+		}
+		vp.cursor = i
+		break
 	}
 	vp.ensureVisible()
 }
 
-// CursorUp moves the cursor up one line.
+// CursorUp moves the cursor up one logical line, skipping hidden hunk headers.
 func (vp *Viewport) CursorUp() {
-	if vp.cursor > 0 {
-		vp.cursor--
+	for i := vp.cursor - 1; i >= 0; i-- {
+		if vp.lines[i].Type == diff.LineHunkHeader && vp.lines[i].Expanded {
+			continue
+		}
+		vp.cursor = i
+		break
 	}
 	vp.ensureVisible()
 }
@@ -159,10 +168,10 @@ func (vp *Viewport) GotoBottom() {
 	vp.ensureVisible()
 }
 
-// NextHunk moves cursor to the next hunk header after current position.
+// NextHunk moves cursor to the next visible hunk header after current position.
 func (vp *Viewport) NextHunk() {
 	for i := vp.cursor + 1; i < len(vp.lines); i++ {
-		if vp.lines[i].Type == diff.LineHunkHeader {
+		if vp.lines[i].Type == diff.LineHunkHeader && !vp.lines[i].Expanded {
 			vp.cursor = i
 			vp.ensureVisible()
 			return
@@ -215,15 +224,114 @@ func (vp *Viewport) SearchPrev(query string) bool {
 	return false
 }
 
-// PrevHunk moves cursor to the previous hunk header before current position.
+// PrevHunk moves cursor to the previous visible hunk header before current position.
 func (vp *Viewport) PrevHunk() {
 	for i := vp.cursor - 1; i >= 0; i-- {
-		if vp.lines[i].Type == diff.LineHunkHeader {
+		if vp.lines[i].Type == diff.LineHunkHeader && !vp.lines[i].Expanded {
 			vp.cursor = i
 			vp.ensureVisible()
 			return
 		}
 	}
+}
+
+// ExpandGap inserts gapLines as context ViewLines before the hunk header
+// at cursorIdx. Returns the number of lines inserted, or 0 if the gap is
+// already expanded or cursorIdx is not on a hunk header.
+func (vp *Viewport) ExpandGap(cursorIdx int, gapLines []string, hl *highlight.SimpleHighlighter, filename string) int {
+	if cursorIdx < 0 || cursorIdx >= len(vp.lines) {
+		return 0
+	}
+	if vp.lines[cursorIdx].Type != diff.LineHunkHeader {
+		return 0
+	}
+	// Check if already expanded: scan backward for the nearest non-hunk-header line
+	for i := cursorIdx - 1; i >= 0; i-- {
+		if vp.lines[i].Type != diff.LineHunkHeader {
+			if vp.lines[i].Expanded {
+				return 0 // already expanded
+			}
+			break
+		}
+	}
+	if len(gapLines) == 0 {
+		return 0
+	}
+
+	// Build ViewLines for gap content
+	var tokensByLine [][]highlight.Token
+	if hl != nil {
+		tokensByLine = hl.TokenizeFile(filename, gapLines)
+	}
+	newLines := make([]ViewLine, len(gapLines))
+	for i, line := range gapLines {
+		vl := ViewLine{
+			Type:       diff.LineContext,
+			Prefix:     " ",
+			RawContent: line,
+			Expanded:   true,
+		}
+		// Determine line numbers
+		if i == 0 {
+			if cursorIdx > 0 {
+				// Find the nearest previous non-hunk-header line's RightNo
+				for j := cursorIdx - 1; j >= 0; j-- {
+					if vp.lines[j].Type != diff.LineHunkHeader {
+						vl.LeftNo = vp.lines[j].RightNo + 1
+						vl.RightNo = vp.lines[j].RightNo + 1
+						break
+					}
+				}
+			} else {
+				// First hunk, no previous line: start from line 1
+				vl.LeftNo = 1
+				vl.RightNo = 1
+			}
+		} else {
+			vl.LeftNo = newLines[i-1].LeftNo + 1
+			vl.RightNo = newLines[i-1].RightNo + 1
+		}
+		if tokensByLine != nil && i < len(tokensByLine) {
+			vl.Tokens = tokensByLine[i]
+		}
+		newLines[i] = vl
+	}
+
+	// Insert before the hunk header
+	vp.lines = append(vp.lines[:cursorIdx], append(newLines, vp.lines[cursorIdx:]...)...)
+	// Mark the hunk header as expanded (hidden) and move cursor past it
+	vp.lines[cursorIdx+len(newLines)].Expanded = true
+	vp.cursor = cursorIdx + len(newLines) + 1
+	vp.ensureVisible()
+	return len(newLines)
+}
+
+// CollapseGap removes expanded lines immediately before the hunk header at
+// cursorIdx. Returns the number of lines removed, or 0 if nothing to collapse.
+func (vp *Viewport) CollapseGap(cursorIdx int) int {
+	if cursorIdx < 0 || cursorIdx >= len(vp.lines) {
+		return 0
+	}
+	if vp.lines[cursorIdx].Type != diff.LineHunkHeader {
+		return 0
+	}
+	// Scan backward to find consecutive Expanded=true lines
+	count := 0
+	for i := cursorIdx - 1; i >= 0 && vp.lines[i].Expanded; i-- {
+		count++
+	}
+	if count == 0 {
+		return 0
+	}
+	// Remove them
+	removeStart := cursorIdx - count
+	vp.lines = append(vp.lines[:removeStart], vp.lines[cursorIdx:]...)
+	// Clear the Expanded flag on the hunk header (it's no longer hidden)
+	vp.lines[removeStart].Expanded = false
+	// Move cursor back to the hunk header
+	vp.cursor = removeStart
+	vp.ensureVisible()
+	return count
 }
 
 // displayRowsFor returns how many terminal rows logical line idx occupies.
@@ -234,6 +342,10 @@ func (vp *Viewport) displayRowsFor(idx int) int {
 		return 1
 	}
 	line := vp.lines[idx]
+	// Hidden hunk headers consume no display rows.
+	if line.Type == diff.LineHunkHeader && line.Expanded {
+		return 0
+	}
 	if line.Type == diff.LineHunkHeader {
 		return 1 // always truncated to width, never wraps
 	}
@@ -324,6 +436,10 @@ func (vp *Viewport) Render(theme Theme, digitWidth int) string {
 
 	for i := vp.offset; i < end && displayLines < vp.height; i++ {
 		line := vp.lines[i]
+		// Skip expanded (hidden) hunk headers — they show context that is now visible
+		if line.Type == diff.LineHunkHeader && line.Expanded {
+			continue
+		}
 		isCursor := i == vp.cursor
 
 		bgColor := vp.lineBackground(line.Type, isCursor, theme)
@@ -502,7 +618,11 @@ func (vp *Viewport) renderContent(line ViewLine, width int, bgColor string, th T
 			}
 		}
 		padded := hunkText + strings.Repeat(" ", max(0, width-lipgloss.Width(hunkText)))
-		return th.HunkStyle().Render(padded)
+		s := th.HunkStyle()
+		if bgColor != "" {
+			s = s.Background(lipgloss.Color(bgColor))
+		}
+		return s.Render(padded)
 	}
 
 	prefix := line.Prefix

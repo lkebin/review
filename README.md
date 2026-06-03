@@ -2,6 +2,8 @@
 
 A terminal-based code review tool written in Go.
 
+![review screenshot](./screenshot/review.png)
+
 ## Features
 
 - **Split-view interface**: File list on the left, diff content on the right
@@ -65,9 +67,16 @@ review -U 10 main
 
 | Key | Action |
 |-----|--------|
-| `Tab` | Toggle focus between file list and diff |
+| `w` | Toggle focus between file list and diff |
 | `Enter` | Focus diff view |
 | `>` / `<` | Grow / shrink file list panel |
+
+### Fold (diff panel)
+
+| Key | Action |
+|-----|--------|
+| `zo` | Expand folded context before a hunk |
+| `zc` | Collapse expanded context |
 
 ### Search
 

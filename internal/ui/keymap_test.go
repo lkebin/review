@@ -50,8 +50,8 @@ func TestKeyMapSimpleKeys(t *testing.T) {
 		{"ctrl+b", FocusDiff, ActionPageUp},
 		{"ctrl+f", FocusList, ActionPageDown},
 		{"ctrl+b", FocusList, ActionPageUp},
-		{"tab", FocusList, ActionFocusToggle},
-		{"tab", FocusDiff, ActionFocusToggle},
+		{"w", FocusList, ActionFocusToggle},
+		{"w", FocusDiff, ActionFocusToggle},
 		{">", FocusList, ActionGrowPanel},
 		{"<", FocusDiff, ActionShrinkPanel},
 	}
@@ -77,15 +77,15 @@ func focusName(f FocusType) string {
 func TestKeyMapFocusSwitch(t *testing.T) {
 	km := NewKeyMapper()
 
-	action := km.HandleKey(key("tab"), FocusList)
+	action := km.HandleKey(key("w"), FocusList)
 	if action != ActionFocusToggle {
-		t.Errorf("tab = %v, want ActionFocusToggle", action)
+		t.Errorf("w = %v, want ActionFocusToggle", action)
 	}
 
 	km.Reset()
-	action = km.HandleKey(key("tab"), FocusDiff)
+	action = km.HandleKey(key("w"), FocusDiff)
 	if action != ActionFocusToggle {
-		t.Errorf("tab = %v, want ActionFocusToggle", action)
+		t.Errorf("w = %v, want ActionFocusToggle", action)
 	}
 }
 
@@ -131,5 +131,39 @@ func TestKeyMapPrefixInvalidFollowUp(t *testing.T) {
 	action = km.HandleKey(key("j"), FocusDiff)
 	if action != ActionCursorDown {
 		t.Errorf("j after invalid prefix = %v, want ActionCursorDown", action)
+	}
+}
+
+func TestKeyMapZOPrefix(t *testing.T) {
+	km := NewKeyMapper()
+
+	action := km.HandleKey(key("z"), FocusDiff)
+	if action != ActionNone {
+		t.Fatalf("single z = %v, want ActionNone", action)
+	}
+
+	action = km.HandleKey(key("o"), FocusDiff)
+	if action != ActionExpandFold {
+		t.Errorf("zo = %v, want ActionExpandFold", action)
+	}
+}
+
+func TestKeyMapZCPrefix(t *testing.T) {
+	km := NewKeyMapper()
+
+	km.HandleKey(key("z"), FocusDiff)
+	action := km.HandleKey(key("c"), FocusDiff)
+	if action != ActionCollapseFold {
+		t.Errorf("zc = %v, want ActionCollapseFold", action)
+	}
+}
+
+func TestKeyMapZFollowedByOther(t *testing.T) {
+	km := NewKeyMapper()
+
+	km.HandleKey(key("z"), FocusDiff)
+	action := km.HandleKey(key("j"), FocusDiff)
+	if action != ActionCursorDown {
+		t.Errorf("z j = %v, want ActionCursorDown (fallback)", action)
 	}
 }
